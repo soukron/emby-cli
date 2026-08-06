@@ -131,6 +131,35 @@ def print_item_choices(
         )
 
 
+def print_library_choices(libraries: list[dict]) -> None:
+    """Print libraries: ID, Name, Type, Items (no Year/Res/Size)."""
+    if not libraries:
+        return
+    id_w = max(len("ID"), max(len(str(lib.get("Id", ""))) for lib in libraries))
+    name_w = 44
+    type_w = max(len("Type"), max(len(str(lib.get("Type") or "?")) for lib in libraries))
+    items_w = max(len("Items"), 5)
+
+    header = (
+        f"{'ID':<{id_w}}  {'Name':<{name_w}}  {'Type':<{type_w}}  {'Items':>{items_w}}"
+    )
+    print()
+    print(header)
+    print("-" * len(header))
+
+    for lib in libraries:
+        iid = str(lib.get("Id", ""))
+        label = str(lib.get("Name") or "?")
+        if len(label) > name_w:
+            label = label[: name_w - 1] + "…"
+        itype = str(lib.get("Type") or "?")
+        count = lib.get("ItemCount")
+        count_s = str(count) if count is not None else "?"
+        print(
+            f"{iid:<{id_w}}  {label:<{name_w}}  {itype:<{type_w}}  {count_s:>{items_w}}"
+        )
+
+
 def _ambiguous(
     items: list[dict],
     *,

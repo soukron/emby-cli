@@ -9,6 +9,7 @@
 - Note: `/Items/Counts` may count multiple versions of the same title higher than UI “items” views.
 - `probe_session`: fall back to `/System/Info/Public` when full `/System/Info` is forbidden (non-admin users); still proceed with Views/Counts.
 - Avoid broken `/Users/Me` on some Emby servers (HTTP 500 Guid format): use `User` from authenticate or `/Users/{id}`.
+- `list`: library table is ID/Name/Type/Items (no Year/Res); gather all counts before printing; `list -l` keeps media table like `search`.
 
 ## 0.2.0
 
