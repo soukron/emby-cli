@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.2
+
 - `version`: show emby-cli version; with valid server credentials also show Emby `/System/Info` version.
 - `info`: session summary (user, url, server, version, os, id) plus library names and item counts from `GET /Items/Counts` (replaces draft `whoami`).
 - `--pick-best-item` is a flag (presence enables auto-select); no longer takes `0`/`1`.
