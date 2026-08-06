@@ -130,7 +130,5 @@ def cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
     print(f"Player:  {' '.join(player_cmd)}")
     wait = bool(getattr(args, "wait", False))
     rc = play_url(player_cmd, url, wait=wait)
-    if not wait:
-        print("Launched (detached). Use --wait to block until the player exits.")
     if rc != 0:
         sys.exit(rc)
