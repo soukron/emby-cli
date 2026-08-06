@@ -1,0 +1,255 @@
+"""Title-line parsing, resolution ranking, and item resolution for play/batch."""
+
+from __future__ import annotations
+
+import re
+
+from emby_cli.client import EmbyClient
+from emby_cli.util import format_size, item_remote_size
+
+_TITLE_RE = re.compile(
+    r"^(.+?)"              # title (non-greedy)
+    r"(?:\s*\((\d{4})\))?" # optional (YYYY)
+    r"(?:\s+S(\d+)"        # optional S##
+    r"(?:E(\d+))?"         # optional E##
+    r")?$",
+    re.IGNORECASE,
+)
+
+
+def parse_title_line(line: str) -> tuple[str, int | None, int | None, int | None]:
+    """Parse 'Title', 'Title (2010)', 'Title S01', 'Title (2008) S01E05', etc."""
+    line = line.strip()
+    m = _TITLE_RE.match(line)
+    if m:
+        title = m.group(1).strip()
+        year = int(m.group(2)) if m.group(2) else None
+        season = int(m.group(3)) if m.group(3) else None
+        episode = int(m.group(4)) if m.group(4) else None
+        return title, season, episode, year
+    return line, None, None, None
+
+
+def item_video_width(item: dict) -> int | None:
+    w = item.get("Width")
+    if w:
+        return w
+    streams = item.get("MediaStreams", [])
+    if not streams:
+        sources = item.get("MediaSources", [])
+        if sources:
+            streams = sources[0].get("MediaStreams", [])
+    for s in streams:
+        if s.get("Type") == "Video" and s.get("Width"):
+            return s["Width"]
+    return None
+
+
+def classify_resolution(width: int | None) -> str:
+    if width is None:
+        return "?"
+    if width >= 3840:
+        return "4K"
+    if width >= 1920:
+        return "1080p"
+    if width >= 1280:
+        return "720p"
+    return "SD"
+
+
+def pick_best_item(items: list[dict]) -> dict | None:
+    """Pick the best resolution up to 1080p (skip 4K)."""
+    if not items:
+        return None
+    if len(items) == 1:
+        return items[0]
+
+    classified = [(it, item_video_width(it) or 0) for it in items]
+
+    # Prefer 1080p
+    for it, w in classified:
+        if classify_resolution(w) == "1080p":
+            return it
+
+    # Then highest that is NOT 4K (720p, SD, etc.)
+    non_4k = [(it, w) for it, w in classified if classify_resolution(w) != "4K"]
+    if non_4k:
+        non_4k.sort(key=lambda x: x[1], reverse=True)
+        return non_4k[0][0]
+
+    # Only 4K available — take it as last resort
+    classified.sort(key=lambda x: x[1], reverse=True)
+    return classified[0][0]
+
+def item_label(item: dict) -> str:
+    """Human-readable name; episodes include SxxExx prefix."""
+    name = item.get("Name") or "?"
+    if item.get("Type") == "Episode":
+        s, e = item.get("ParentIndexNumber"), item.get("IndexNumber")
+        if s is not None and e is not None:
+            return f"S{s:02d}E{e:02d} {name}"
+    return name
+
+
+def print_item_choices(
+    items: list[dict],
+    *,
+    selected: dict | None = None,
+    excluded: set[str] | None = None,
+) -> None:
+    """Print a compact, uniform table of items (movies, series, episodes)."""
+    if not items:
+        return
+    excluded = excluded or set()
+    id_w = max(len("ID"), max(len(str(it.get("Id", ""))) for it in items))
+    name_w = 44
+
+    header = (
+        f"{'ID':<{id_w}}  {'Name':<{name_w}}  {'Year':<4}  {'Type':<8}  "
+        f"{'Res':>5}  {'Size':>9}  Note"
+    )
+    print()
+    print(header)
+    print("-" * len(header))
+
+    selected_id = selected.get("Id") if selected else None
+    for it in items:
+        iid = str(it.get("Id", ""))
+        label = item_label(it)
+        if len(label) > name_w:
+            label = label[: name_w - 1] + "…"
+        year = str(it.get("ProductionYear") or "?")
+        itype = str(it.get("Type") or "?")
+        res = classify_resolution(item_video_width(it))
+        size = format_size(item_remote_size(it))
+        notes: list[str] = []
+        if selected_id is not None and iid == selected_id:
+            notes.append("selected")
+        if iid in excluded:
+            notes.append("year")
+        note = ", ".join(notes)
+        print(
+            f"{iid:<{id_w}}  {label:<{name_w}}  {year:<4}  {itype:<8}  "
+            f"{res:>5}  {size:>9}  {note}"
+        )
+
+
+def resolve_title_item(
+    client: EmbyClient,
+    raw_line: str,
+    *,
+    pick_best: bool = False,
+) -> dict | None:
+    """Resolve a batch-style title line to one playable item.
+
+    When *pick_best* is True and several candidates remain after title/year
+    filters, chooses the best ≤1080p version (same as ``batch``). When False
+    (default), any ambiguity prints the table and returns None so the user
+    can pass ``--item-id``.
+    """
+    title, season, episode, year = parse_title_line(raw_line)
+
+    def _ambiguous(items: list[dict], *, excluded: set[str] | None = None,
+                   hint: str = "Use --item-id with an ID from the list above, "
+                               "or pass --pick-best-item=1 to auto-select.") -> None:
+        print_item_choices(items, excluded=excluded)
+        print(f"\n{hint}")
+
+    if season is not None:
+        kind = f"S{season:02d}E{episode:02d}" if episode is not None else f"S{season:02d}"
+        label = f"{title} ({year}) {kind}" if year else f"{title} {kind}"
+        print(f"Searching: \"{label}\" (series)")
+
+        series_results = client.search_items(title, item_types="Series")
+        if not series_results:
+            print("No series found.")
+            return None
+
+        candidates = series_results
+        excluded: set[str] = set()
+        if year is not None:
+            year_matches = [s for s in series_results if s.get("ProductionYear") == year]
+            if year_matches:
+                print(f"  Year filter: {year} ({len(year_matches)}/{len(series_results)} match)")
+                excluded = {s["Id"] for s in series_results if s not in year_matches}
+                candidates = year_matches
+            else:
+                print(f"  No series match year {year}.")
+                _ambiguous(series_results)
+                return None
+
+        if len(candidates) > 1:
+            print("  Multiple series matches; pick one with --item-id:")
+            _ambiguous(series_results, excluded=excluded)
+            return None
+
+        series = candidates[0]
+        print(f"  Found series: {series['Name']} ({series.get('ProductionYear', '?')})")
+
+        episodes = client.get_show_episodes(series["Id"], season=season)
+        if episode is not None:
+            episodes = [e for e in episodes if e.get("IndexNumber") == episode]
+
+        if not episodes:
+            print(f"  No episodes found for {kind}.")
+            return None
+
+        if episode is None:
+            print(f"  Season {season:02d} has {len(episodes)} episode(s); "
+                  "specify SxxExx or --item-id:")
+            print_item_choices(episodes)
+            return None
+
+        if len(episodes) == 1:
+            return episodes[0]
+
+        if not pick_best:
+            print(f"  {len(episodes)} versions for {kind}; ambiguous:")
+            _ambiguous(episodes)
+            return None
+
+        best = pick_best_item(episodes)
+        if best is None:
+            _ambiguous(episodes)
+            return None
+        print_item_choices(episodes, selected=best)
+        return best
+
+    # Movie path
+    label = f"{title} ({year})" if year else title
+    print(f"Searching: \"{label}\" (movie)")
+    results = client.search_items(title, item_types="Movie")
+    if not results:
+        print("No results found.")
+        return None
+
+    candidates = results
+    excluded: set[str] = set()
+    if year is not None:
+        year_matches = [r for r in results if r.get("ProductionYear") == year]
+        if year_matches:
+            print(f"  Year filter: {year} ({len(year_matches)}/{len(results)} match)")
+            excluded = {r["Id"] for r in results if r not in year_matches}
+            candidates = year_matches
+        else:
+            print(f"  No results match year {year}.")
+            _ambiguous(results)
+            return None
+
+    if len(candidates) == 1:
+        best = candidates[0]
+        print_item_choices(results, selected=best, excluded=excluded)
+        return best
+
+    if not pick_best:
+        print(f"  {len(candidates)} matches; ambiguous:")
+        _ambiguous(results, excluded=excluded)
+        return None
+
+    best = pick_best_item(candidates)
+    if best is None:
+        _ambiguous(candidates)
+        return None
+
+    print_item_choices(results, selected=best, excluded=excluded)
+    return best

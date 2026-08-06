@@ -1,0 +1,68 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "emby-cli"
+dynamic = ["version"]
+description = "CLI to list, search, play, and download/backup original media from an Emby server via its REST API."
+readme = "README.md"
+license = "CC-BY-NC-4.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.9"
+authors = [
+    { name = "Sergio Garcia", email = "soukron@gmbros.net" },
+]
+maintainers = [
+    { name = "Sergio Garcia", email = "soukron@gmbros.net" },
+]
+keywords = ["emby", "media", "download", "backup", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: Free for non-commercial use",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Video",
+]
+dependencies = [
+    "requests>=2.31",
+    "tqdm>=4.66",
+    "m3u8>=4.0",
+    "static-ffmpeg>=3.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/soukron/emby-cli"
+Repository = "https://github.com/soukron/emby-cli"
+Issues = "https://github.com/soukron/emby-cli/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "build>=1.0",
+    "twine>=5.0",
+]
+
+[project.scripts]
+emby-cli = "emby_cli.cli:main"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["src/emby_cli"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/emby_cli" = "emby_cli"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/emby_cli/_version.py"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
