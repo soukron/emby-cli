@@ -63,3 +63,32 @@ def test_get_system_info_endpoint():
     with patch.object(client, "_get", return_value=mock_resp) as get:
         assert client.get_system_info()["Version"] == "4.8.0.0"
     assert get.call_args.args[0] == "/System/Info"
+
+
+def test_probe_session_falls_back_to_public_system_info():
+    client = EmbyClient("http://host:8096", api_key="k")
+    client.user_id = "u1"
+    me = MagicMock()
+    me.json.return_value = {"Name": "u", "Id": "u1"}
+    forbidden = MagicMock()
+    forbidden.raise_for_status.side_effect = requests.HTTPError("403")
+    # _request_with_retry raises HTTPError from raise_for_status
+    public = MagicMock()
+    public.json.return_value = {"ServerName": "home", "Version": "4.8.0"}
+
+    def fake_get(path, **kwargs):
+        if path == "/Users/Me":
+            return me
+        if path == "/System/Info":
+            exc = requests.HTTPError("403")
+            exc.response = MagicMock(status_code=403)
+            raise exc
+        if path == "/System/Info/Public":
+            return public
+        raise AssertionError(path)
+
+    with patch.object(client, "_get", side_effect=fake_get):
+        user, info = client.probe_session()
+    assert user["Name"] == "u"
+    assert info["ServerName"] == "home"
+    assert info["Version"] == "4.8.0"

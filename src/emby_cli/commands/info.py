@@ -79,7 +79,7 @@ def cmd_info(args: argparse.Namespace) -> None:
 
     print(f"user: {user_name}")
     print(f"url: {client.server_url}")
-    print(f"server: {info.get('ServerName') or info.get('Id') or 'Emby'}")
+    print(f"server: {info.get('ServerName') or info.get('Id') or 'unknown'}")
     print(f"version: {info.get('Version') or 'unknown'}")
 
     os_name = info.get("OperatingSystemDisplayName") or info.get("OperatingSystem")

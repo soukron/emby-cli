@@ -193,13 +193,32 @@ class EmbyClient:
         timeout: float | None = None,
         retries: int | None = None,
     ) -> dict:
-        """Authenticated server info (``GET /System/Info``)."""
+        """Authenticated server info (``GET /System/Info``).
+
+        Full details often require an admin / API-key context; non-admin
+        users may get HTTP 401/403 — prefer :meth:`get_system_info_public`
+        as a fallback.
+        """
         kwargs: dict = {}
         if timeout is not None:
             kwargs["timeout"] = timeout
         if retries is not None:
             kwargs["retries"] = retries
         return self._get("/System/Info", **kwargs).json()
+
+    def get_system_info_public(
+        self,
+        *,
+        timeout: float | None = None,
+        retries: int | None = None,
+    ) -> dict:
+        """Public server info (``GET /System/Info/Public``): name, version, addresses."""
+        kwargs: dict = {}
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        if retries is not None:
+            kwargs["retries"] = retries
+        return self._get("/System/Info/Public", **kwargs).json()
 
     def get_current_user(
         self,
@@ -221,12 +240,23 @@ class EmbyClient:
         username: str | None = None,
         password: str = "",
     ) -> tuple[dict, dict]:
-        """One-shot auth + ``/Users/Me`` + ``/System/Info`` (no retries)."""
+        """One-shot auth + ``/Users/Me`` + system info (no retries).
+
+        Tries ``/System/Info`` first; on HTTP error falls back to
+        ``/System/Info/Public`` (typical for non-admin users). If both
+        fail, returns an empty info dict so callers can still use the user.
+        """
         kwargs = {"timeout": INFO_TIMEOUT, "retries": INFO_RETRIES}
         if username is not None:
             self.authenticate(username, password, **kwargs)
         user = self.get_current_user(**kwargs)
-        info = self.get_system_info(**kwargs)
+        try:
+            info = self.get_system_info(**kwargs)
+        except requests.HTTPError:
+            try:
+                info = self.get_system_info_public(**kwargs)
+            except requests.HTTPError:
+                info = {}
         return user, info
 
     def get_item_counts(
