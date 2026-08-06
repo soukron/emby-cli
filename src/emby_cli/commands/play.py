@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import re
 import shlex
 import shutil
 import subprocess
@@ -79,10 +78,6 @@ def play_url(player_cmd: list[str], url: str, *, wait: bool = False) -> int:
     return 0
 
 
-def redact_url(url: str) -> str:
-    return re.sub(r"(api_key=)[^&]+", r"\1***", url, flags=re.I)
-
-
 def cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
     """Resolve DirectStreamUrl and open it in an external player."""
     search = (getattr(args, "search", None) or "").strip() or None
@@ -119,6 +114,7 @@ def cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
 
     res = classify_resolution(item_video_width(item))
     year = item.get("ProductionYear", "?")
+    print()
     print(f"Playing: {item.get('Name')} ({year}) [{item.get('Type')}, {res}]")
     try:
         url = client.resolve_direct_stream_url(item_id)
@@ -126,8 +122,6 @@ def cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
         print_error(f"resolving stream URL: {exc}")
         sys.exit(1)
 
-    print(f"Stream:  {redact_url(url)}")
-    print(f"Player:  {' '.join(player_cmd)}")
     wait = bool(getattr(args, "wait", False))
     rc = play_url(player_cmd, url, wait=wait)
     if rc != 0:
