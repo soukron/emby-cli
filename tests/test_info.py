@@ -57,15 +57,19 @@ def test_info_ok(capsys):
         cmd_info(args)
 
     out = capsys.readouterr().out
+    assert "Connection" in out
     assert "user: sergio" in out
     assert "url: http://host:8096" in out
+    assert "Server" in out
     assert "server: home" in out
     assert "version: 4.8.0" in out
     assert "os: Linux" in out
     assert "id: srv-id" in out
     assert "local: http://192.168.1.1:8096" in out
     assert "wan: http://example.com:8096" in out
-    assert "libraries: 2 (Movies, TV)" in out
+    assert "Content" in out
+    assert "libraries: 2" in out
+    assert "Movies" not in out
     assert "movies: 10" in out
     assert "series: 2" in out
     assert "episodes: 50" in out
@@ -89,8 +93,10 @@ def test_info_unreachable_soft(capsys):
         client.probe_session.side_effect = requests.Timeout("timed out")
         cmd_info(args)
     out = capsys.readouterr().out
+    assert "Connection" in out
     assert "user: u" in out
     assert "url: http://host:8096" in out
+    assert "Server" in out
     assert "server: not validated (name and version unavailable)" in out
     assert "movies:" not in out
 

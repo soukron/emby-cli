@@ -13,13 +13,19 @@ warnings.filterwarnings("ignore", message="urllib3 v2 only supports OpenSSL")
 import requests
 
 from emby_cli.client import EmbyClient
-from emby_cli.commands.download import cmd_download
+from emby_cli.commands.download import cmd_download, validate_download_args
 from emby_cli.commands.help import COMMAND_SUMMARIES, cmd_help
 from emby_cli.commands.info import cmd_info
-from emby_cli.commands.play import cmd_play
-from emby_cli.commands.search import cmd_search
+from emby_cli.commands.login import cmd_login
+from emby_cli.commands.play import cmd_play, validate_play_args
+from emby_cli.commands.search import cmd_search, validate_search_args
 from emby_cli.commands.version import cmd_version
 from emby_cli.constants import DEFAULT_OUTPUT, SEARCH_COUNT_DEFAULT
+from emby_cli.credentials import (
+    CredentialError,
+    resolve_operational_auth,
+    resolve_server,
+)
 
 
 _FORCE_HELP = "Re-download even if local file already matches"
@@ -41,6 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     _help_by_name = dict(COMMAND_SUMMARIES)
 
     sub.add_parser("help", help=_help_by_name["help"])
+    sub.add_parser("login", help=_help_by_name["login"])
 
     dl = sub.add_parser(
         "download",
@@ -178,12 +185,56 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _open_client(args: argparse.Namespace) -> EmbyClient:
+    """Build a client for operational commands (api key, cache, or transparent login)."""
+    try:
+        server = resolve_server(args, prompt=False)
+    except CredentialError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    api_key, username, password = resolve_operational_auth(args)
+    client = EmbyClient(server, api_key=api_key)
+
+    if api_key:
+        return client
+
+    try:
+        client.ensure_user_session(username, password)
+    except RuntimeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        print(
+            "Provide --api-key / EMBY_API_KEY, --username / EMBY_USERNAME, "
+            "or run `emby-cli login`",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    except requests.HTTPError as exc:
+        print(f"Authentication failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+    return client
+
+
+def _validate_command_args(command: str, args: argparse.Namespace) -> str | None:
+    if command == "search":
+        return validate_search_args(args)
+    if command == "download":
+        return validate_download_args(args)
+    if command == "play":
+        return validate_play_args(args)
+    return None
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
     if args.command == "help":
         cmd_help()
+        return
+
+    if args.command == "login":
+        cmd_login(args)
         return
 
     if args.command == "version":
@@ -194,24 +245,15 @@ def main() -> None:
         cmd_info(args)
         return
 
-    if not args.server:
-        parser.error("Provide --server or set EMBY_SERVER")
+    err = _validate_command_args(args.command, args)
+    if err:
+        if err.startswith("error:"):
+            print(err, file=sys.stderr)
+        else:
+            print(err)
+        sys.exit(1)
 
-    if not args.api_key and not args.username:
-        parser.error("Provide --api-key / EMBY_API_KEY or --username / EMBY_USERNAME")
-
-    client = EmbyClient(args.server, api_key=args.api_key)
-
-    if args.username is not None:
-        pw = args.password if args.password is not None else ""
-        print(f"Authenticating as '{args.username}'...")
-        try:
-            client.authenticate(args.username, pw)
-        except requests.HTTPError as exc:
-            print(f"Authentication failed: {exc}")
-            sys.exit(1)
-        print("OK\n")
-
+    client = _open_client(args)
     commands = {
         "download": cmd_download,
         "search": cmd_search,

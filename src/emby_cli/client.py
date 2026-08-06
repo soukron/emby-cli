@@ -12,6 +12,12 @@ import m3u8
 import requests
 from tqdm import tqdm
 
+from emby_cli.auth_cache import (
+    AuthCacheEntry,
+    clear_auth_cache,
+    load_auth_cache,
+    save_auth_cache,
+)
 from emby_cli.constants import (
     CLIENT_NAME,
     DEFAULT_CHUNK,
@@ -26,6 +32,7 @@ from emby_cli.util import remux_segments
 from emby_cli.version import get_version
 
 _DEVICE_ID = hashlib.md5(CLIENT_NAME.encode()).hexdigest()
+_AUTH_PATH = "/Users/AuthenticateByName"
 
 
 def _client_version() -> str:
@@ -34,7 +41,13 @@ def _client_version() -> str:
 
 
 class EmbyClient:
-    def __init__(self, server_url: str, api_key: str | None = None):
+    def __init__(
+        self,
+        server_url: str,
+        api_key: str | None = None,
+        *,
+        use_auth_cache: bool = True,
+    ):
         base = server_url.rstrip("/")
         if base.lower().endswith("/emby"):
             base = base[: -len("/emby")]
@@ -42,6 +55,10 @@ class EmbyClient:
         self.api_key = api_key
         self.user_id: str | None = None
         self.access_token: str | None = api_key
+        self.use_auth_cache = use_auth_cache
+        self._username: str | None = None
+        self._password: str | None = None
+        self._reauth_attempted = False
         self.session = requests.Session()
         ver = _client_version()
         self.session.headers.update({
@@ -81,29 +98,40 @@ class EmbyClient:
         retries: int | None = None,
         **kwargs,
     ) -> requests.Response:
-        kwargs.setdefault("headers", self._auth_header())
         url = self._url(path)
         max_attempts = MAX_RETRIES if retries is None else max(1, retries)
         resp = None
-        for attempt in range(1, max_attempts + 1):
+        attempt = 1
+        while True:
             try:
-                resp = self.session.request(method, url, **kwargs)
+                headers = dict(kwargs.get("headers") or {})
+                headers.update(self._auth_header())
+                req_kwargs = {**kwargs, "headers": headers}
+                resp = self.session.request(method, url, **req_kwargs)
                 resp.raise_for_status()
                 return resp
             except (requests.ConnectionError, requests.Timeout) as exc:
-                if attempt == max_attempts:
+                if attempt >= max_attempts:
                     raise
                 wait = RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
                 print(f"  Connection error (attempt {attempt}/{max_attempts}), retrying in {wait}s: {exc}")
                 time.sleep(wait)
+                attempt += 1
             except requests.HTTPError:
+                if (
+                    resp is not None
+                    and resp.status_code == 401
+                    and path != _AUTH_PATH
+                    and self._try_reauthenticate()
+                ):
+                    continue
                 if resp is not None and resp.status_code >= 500 and attempt < max_attempts:
                     wait = RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
                     print(f"  Server error {resp.status_code} (attempt {attempt}/{max_attempts}), retrying in {wait}s")
                     time.sleep(wait)
-                else:
-                    raise
-        raise RuntimeError("unreachable")
+                    attempt += 1
+                    continue
+                raise
 
     def _get(
         self,
@@ -158,7 +186,7 @@ class EmbyClient:
             kwargs["timeout"] = timeout
         if retries is not None:
             kwargs["retries"] = retries
-        resp = self._post("/Users/AuthenticateByName", data, **kwargs)
+        resp = self._post(_AUTH_PATH, data, **kwargs)
         body = resp.json()
         try:
             self.access_token = body["AccessToken"]
@@ -168,7 +196,90 @@ class EmbyClient:
             raise RuntimeError(
                 "Authentication response missing AccessToken or User.Id"
             ) from exc
+        self._username = username
+        self._password = password
+        self._reauth_attempted = False
+        self._persist_auth_cache()
         return user
+
+    def ensure_user_session(
+        self,
+        username: str | None = None,
+        password: str | None = None,
+        *,
+        force: bool = False,
+        timeout: float | None = None,
+        retries: int | None = None,
+    ) -> dict | None:
+        """Restore a cached AccessToken or authenticate.
+
+        When *force* is True (``login``), always calls AuthenticateByName.
+        Returns the Emby ``User`` dict from a fresh login, or ``None`` when
+        the session was restored from cache.
+
+        *password* ``None`` means unknown (no 401 re-auth); ``""`` is valid.
+        """
+        if password is not None:
+            self._password = password
+        if username is not None:
+            self._username = username
+
+        if not force and self._try_restore_auth_cache(username):
+            return None
+
+        if not username:
+            raise RuntimeError(
+                "No cached session; provide --username / EMBY_USERNAME "
+                "or run `emby-cli login`"
+            )
+        return self.authenticate(
+            username,
+            password if password is not None else "",
+            timeout=timeout,
+            retries=retries,
+        )
+
+    def _try_restore_auth_cache(self, username: str | None = None) -> bool:
+        if not self.use_auth_cache or self.api_key:
+            return False
+        entry = load_auth_cache(server_url=self.server_url, username=username)
+        if entry is None:
+            return False
+        self.access_token = entry.access_token
+        self.user_id = entry.user_id
+        self._username = entry.username
+        self._reauth_attempted = False
+        return True
+
+    def _persist_auth_cache(self) -> None:
+        if not self.use_auth_cache or self.api_key:
+            return
+        if not self._username or not self.access_token or not self.user_id:
+            return
+        save_auth_cache(
+            AuthCacheEntry.create(
+                server_url=self.server_url,
+                username=self._username,
+                access_token=self.access_token,
+                user_id=self.user_id,
+            )
+        )
+
+    def _invalidate_cached_session(self) -> None:
+        if self._username:
+            clear_auth_cache(server_url=self.server_url, username=self._username)
+        self.access_token = self.api_key
+        self.user_id = None
+
+    def _try_reauthenticate(self) -> bool:
+        if self._reauth_attempted:
+            return False
+        if self._username is None or self._password is None:
+            return False
+        self._reauth_attempted = True
+        self._invalidate_cached_session()
+        self.authenticate(self._username, self._password)
+        return True
 
     def resolve_user_id(self) -> str:
         if self.user_id:
@@ -257,18 +368,25 @@ class EmbyClient:
         self,
         *,
         username: str | None = None,
-        password: str = "",
+        password: str | None = None,
     ) -> tuple[dict, dict]:
         """One-shot auth + current user + system info (no retries).
 
-        Uses the ``User`` from ``AuthenticateByName`` when logging in by name
-        (avoids broken ``/Users/Me`` on some servers). Tries ``/System/Info``
-        then ``/System/Info/Public``.
+        Uses cached AccessToken when possible; otherwise AuthenticateByName
+        when *username* is set (or cache miss with credentials). Tries
+        ``/System/Info`` then ``/System/Info/Public``.
         """
         kwargs = {"timeout": INFO_TIMEOUT, "retries": INFO_RETRIES}
         user: dict | None = None
-        if username is not None:
-            user = self.authenticate(username, password, **kwargs)
+        if username is not None or (not self.api_key and self.use_auth_cache):
+            restored = self.ensure_user_session(
+                username,
+                password,
+                timeout=INFO_TIMEOUT,
+                retries=INFO_RETRIES,
+            )
+            if restored is not None:
+                user = restored
         if user is None:
             user = self.get_current_user(**kwargs)
         elif not user.get("Id") and self.user_id:

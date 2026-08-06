@@ -89,7 +89,8 @@ def test_probe_session_falls_back_to_public_system_info():
     assert info["Version"] == "4.8.0"
 
 
-def test_probe_session_uses_auth_user_skips_users_me():
+def test_probe_session_uses_auth_user_skips_users_me(tmp_path, monkeypatch):
+    monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
     client = EmbyClient("http://host:8096")
     auth_user = {"Name": "u", "Id": "abcd" * 8}
 

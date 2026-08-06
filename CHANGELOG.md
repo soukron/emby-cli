@@ -2,7 +2,12 @@
 
 ## Unreleased
 
-- Known issue (not fixed yet): `search`/`download`/`play` authenticate before validating required selectors (`--id`/`--search`/`--all`); see ops `AGENTS.md` → Deuda.
+- Validate `search` / `download` / `play` selectors before authenticating (fail fast without touching the server).
+- `info`: output grouped under Connection / Server / Content sections; libraries shown as count only.
+- Auth by username: no longer prints `Authenticating…` / `OK` on success (failures still go to stderr).
+- AccessToken cache on disk for username/password auth (`~/.cache/emby-cli/`, `EMBY_CACHE_DIR`, `EMBY_NO_AUTH_CACHE=1`); never stores the password.
+- `login`: interactive (or env/flags) AuthenticateByName and save cache.
+- Operational commands: reuse cached token; if miss but env/CLI credentials exist, login transparently; on HTTP 401, clear cache and re-auth once when password is known.
 
 ## 0.3.0
 

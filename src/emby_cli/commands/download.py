@@ -58,6 +58,36 @@ def _download_items(
     return stats
 
 
+def validate_download_args(args: argparse.Namespace) -> str | None:
+    """Return an error message if mode/selectors are invalid; else ``None``."""
+    if getattr(args, "media_item", False):
+        search = (getattr(args, "search", None) or "").strip() or None
+        item_id = (getattr(args, "id", None) or "").strip() or None
+        if not item_id and not search:
+            item_id = (os.environ.get("EMBY_ITEM_ID") or "").strip() or None
+        if bool(item_id) == bool(search):
+            return "With --media-item, provide exactly one of --id or --search"
+        return None
+
+    if getattr(args, "library", False):
+        if bool(getattr(args, "pick_best_item", False)):
+            return "--pick-best-item cannot be used with --library"
+        library_id = (getattr(args, "id", None) or "").strip() or None
+        search = (getattr(args, "search", None) or "").strip() or None
+        if bool(library_id) == bool(search):
+            return "With --library, provide exactly one of --id or --search"
+        return None
+
+    if getattr(args, "from_file", None):
+        if (getattr(args, "id", None) or "").strip() or (
+            getattr(args, "search", None) or ""
+        ).strip():
+            return "With --from-file, do not pass --id or --search"
+        return None
+
+    return "Specify --media-item, --library, or --from-file"
+
+
 def _cmd_download_item(client: EmbyClient, args: argparse.Namespace) -> None:
     output = Path(args.output)
     throttle = float(getattr(args, "throttle", 0) or 0)
@@ -68,10 +98,6 @@ def _cmd_download_item(client: EmbyClient, args: argparse.Namespace) -> None:
     item_id = (getattr(args, "id", None) or "").strip() or None
     if not item_id and not search:
         item_id = (os.environ.get("EMBY_ITEM_ID") or "").strip() or None
-
-    if bool(item_id) == bool(search):
-        print("With --media-item, provide exactly one of --id or --search")
-        sys.exit(1)
 
     if dry_run:
         print("*** DRY RUN — no files will be downloaded ***\n")
@@ -133,14 +159,6 @@ def _cmd_download_library(client: EmbyClient, args: argparse.Namespace) -> None:
     library_id = (getattr(args, "id", None) or "").strip() or None
     search = (getattr(args, "search", None) or "").strip() or None
 
-    if bool(getattr(args, "pick_best_item", False)):
-        print("--pick-best-item cannot be used with --library")
-        sys.exit(1)
-
-    if bool(library_id) == bool(search):
-        print("With --library, provide exactly one of --id or --search")
-        sys.exit(1)
-
     if dry_run:
         print("*** DRY RUN — no files will be downloaded ***\n")
 
@@ -176,10 +194,6 @@ def _cmd_download_from_file(client: EmbyClient, args: argparse.Namespace) -> Non
     method = getattr(args, "method", "download")
     dry_run = bool(getattr(args, "dry_run", False))
     pick_best = bool(getattr(args, "pick_best_item", False))
-
-    if (getattr(args, "id", None) or "").strip() or (getattr(args, "search", None) or "").strip():
-        print("With --from-file, do not pass --id or --search")
-        sys.exit(1)
 
     if dry_run:
         print("*** DRY RUN — no files will be downloaded ***\n")
@@ -316,6 +330,11 @@ def _cmd_download_from_file(client: EmbyClient, args: argparse.Namespace) -> Non
 
 
 def cmd_download(client: EmbyClient, args: argparse.Namespace) -> None:
+    err = validate_download_args(args)
+    if err:
+        print(err)
+        sys.exit(1)
+
     if getattr(args, "media_item", False):
         _cmd_download_item(client, args)
         return

@@ -78,8 +78,8 @@ def play_url(player_cmd: list[str], url: str, *, wait: bool = False) -> int:
     return 0
 
 
-def cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
-    """Resolve DirectStreamUrl and open it in an external player."""
+def validate_play_args(args: argparse.Namespace) -> str | None:
+    """Return an error message if selectors are invalid; else ``None``."""
     search = (getattr(args, "search", None) or "").strip() or None
     item_id = (getattr(args, "id", None) or "").strip() or None
     if not item_id and not search:
@@ -87,12 +87,24 @@ def cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
     pick_best = bool(getattr(args, "pick_best_item", False))
 
     if bool(item_id) == bool(search):
-        print("Provide exactly one of --id or --search")
+        return "Provide exactly one of --id or --search"
+    if item_id and pick_best:
+        return "--pick-best-item can only be used with --search"
+    return None
+
+
+def cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
+    """Resolve DirectStreamUrl and open it in an external player."""
+    err = validate_play_args(args)
+    if err:
+        print(err)
         sys.exit(1)
 
-    if item_id and pick_best:
-        print("--pick-best-item can only be used with --search")
-        sys.exit(1)
+    search = (getattr(args, "search", None) or "").strip() or None
+    item_id = (getattr(args, "id", None) or "").strip() or None
+    if not item_id and not search:
+        item_id = (os.environ.get("EMBY_ITEM_ID") or "").strip() or None
+    pick_best = bool(getattr(args, "pick_best_item", False))
 
     if item_id:
         try:

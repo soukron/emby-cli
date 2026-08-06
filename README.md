@@ -24,20 +24,25 @@ Set environment variables (or pass CLI flags):
 
 | Variable | Description |
 |----------|-------------|
-| `EMBY_SERVER` | Server URL (required) |
+| `EMBY_SERVER` | Server URL (required for most commands) |
 | `EMBY_API_KEY` | API key (or use username/password) |
 | `EMBY_USERNAME` / `EMBY_PASSWORD` | Name/password auth |
 | `EMBY_OUTPUT` | Download directory (default `./downloads`) |
 | `EMBY_METHOD` | `download`, `stream`, or `hls` |
 | `EMBY_PLAYER` | External player for `play` |
 | `EMBY_ITEM_ID` | Default for `--id` (item mode / play) |
+| `EMBY_CACHE_DIR` | Session cache directory (default `~/.cache/emby-cli`) |
+| `EMBY_NO_AUTH_CACHE` | Set to `1` to disable reading/writing the AccessToken cache |
 
 See `.env.example`. The app does not load `.env` itself — `source` it or export vars.
+
+With username/password, the AccessToken from Emby is cached on disk (never the password). Later runs reuse it; if the cache is missing but credentials are in env/flags, login happens transparently. Use `emby-cli login` for an interactive login that always refreshes the cache. API keys are not cached.
 
 ## Usage
 
 ```bash
 emby-cli help
+emby-cli login
 emby-cli version
 emby-cli info
 emby-cli search --media-item --search "Title"

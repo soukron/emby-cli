@@ -10,6 +10,11 @@ import requests
 
 from emby_cli.client import EmbyClient
 from emby_cli.constants import INFO_RETRIES, INFO_TIMEOUT
+from emby_cli.credentials import (
+    CredentialError,
+    resolve_operational_auth,
+    resolve_server,
+)
 
 # Always shown (even when 0).
 _PRIMARY_COUNTS = (
@@ -46,29 +51,26 @@ def _addr_differs(configured: str, candidate: str | None) -> bool:
 
 
 def cmd_info(args: argparse.Namespace) -> None:
-    if not args.server:
-        print("error: provide --server or set EMBY_SERVER", file=sys.stderr)
-        sys.exit(1)
-    if not args.api_key and not args.username:
-        print(
-            "error: provide --api-key / EMBY_API_KEY or --username / EMBY_USERNAME",
-            file=sys.stderr,
-        )
+    try:
+        server = resolve_server(args, prompt=False)
+    except CredentialError as exc:
+        print(f"error: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    configured_user = args.username or None
-    client = EmbyClient(args.server, api_key=args.api_key)
+    api_key, username, password = resolve_operational_auth(args)
+    configured_user = username
+    client = EmbyClient(server, api_key=api_key)
     probe_kw = {"timeout": INFO_TIMEOUT, "retries": INFO_RETRIES}
 
     try:
-        user, info = client.probe_session(
-            username=args.username if args.username is not None else None,
-            password=args.password if args.password is not None else "",
-        )
+        user, info = client.probe_session(username=username, password=password)
     except (requests.RequestException, RuntimeError, ValueError, KeyError, TypeError) as exc:
         user_name = configured_user or "unknown"
+        print("Connection")
         print(f"user: {user_name}")
         print(f"url: {client.server_url}")
+        print()
+        print("Server")
         print("server: not validated (name and version unavailable)")
         print(f"detail: {exc}", file=sys.stderr)
         return
@@ -78,8 +80,12 @@ def cmd_info(args: argparse.Namespace) -> None:
     if user_id:
         client.user_id = user_id
 
+    print("Connection")
     print(f"user: {user_name}")
     print(f"url: {client.server_url}")
+    print()
+
+    print("Server")
     print(f"server: {info.get('ServerName') or info.get('Id') or 'unknown'}")
     print(f"version: {info.get('Version') or 'unknown'}")
 
@@ -95,7 +101,9 @@ def cmd_info(args: argparse.Namespace) -> None:
         print(f"local: {info['LocalAddress']}")
     if _addr_differs(client.server_url, info.get("WanAddress")):
         print(f"wan: {info['WanAddress']}")
+    print()
 
+    print("Content")
     try:
         libraries = client.get_libraries(**probe_kw)
     except (requests.RequestException, RuntimeError, ValueError, KeyError, TypeError):
@@ -103,11 +111,7 @@ def cmd_info(args: argparse.Namespace) -> None:
         libraries = None
 
     if libraries is not None:
-        names = [lib.get("Name") or lib.get("Id") or "?" for lib in libraries]
-        if names:
-            print(f"libraries: {len(names)} ({', '.join(names)})")
-        else:
-            print("libraries: 0")
+        print(f"libraries: {len(libraries)}")
 
     try:
         counts = client.get_item_counts(user_id=user_id, **probe_kw)

@@ -8,23 +8,22 @@ import sys
 import requests
 
 from emby_cli.client import EmbyClient
+from emby_cli.credentials import resolve_operational_auth, resolve_server, CredentialError
 from emby_cli.version import get_version
 
 
 def cmd_version(args: argparse.Namespace) -> None:
     print(f"emby-cli: {get_version()}")
 
-    has_server = bool(getattr(args, "server", None))
-    has_creds = bool(getattr(args, "api_key", None) or getattr(args, "username", None))
-    if not has_server or not has_creds:
+    try:
+        server = resolve_server(args, prompt=False)
+    except CredentialError:
         return
 
-    client = EmbyClient(args.server, api_key=args.api_key)
+    api_key, username, password = resolve_operational_auth(args)
+    client = EmbyClient(server, api_key=api_key)
     try:
-        _user, info = client.probe_session(
-            username=args.username if args.username is not None else None,
-            password=args.password if args.password is not None else "",
-        )
+        _user, info = client.probe_session(username=username, password=password)
     except (requests.RequestException, RuntimeError, ValueError, KeyError, TypeError) as exc:
         print("server: not validated (name and version unavailable)")
         print(f"detail: {exc}", file=sys.stderr)

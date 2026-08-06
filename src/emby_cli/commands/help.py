@@ -5,6 +5,7 @@ from __future__ import annotations
 # (name, one-line summary) — keep in sync with cli subparsers.
 COMMAND_SUMMARIES: tuple[tuple[str, str], ...] = (
     ("help", "List available commands"),
+    ("login", "Authenticate and cache an AccessToken"),
     ("version", "Show emby-cli version"),
     ("info", "Show session user, server details, libraries, and item counts"),
     ("search", "Search media items or libraries"),
@@ -21,3 +22,4 @@ def cmd_help() -> None:
         print(f"  {name:<{width}}  {summary}")
     print("\nUse `emby-cli <command> -h` for options.")
     print("Global flags: --server / -s, --api-key / -k, --username / -u, --password / -p")
+    print("Auth: API key, `emby-cli login`, or username/password (AccessToken cached on disk).")

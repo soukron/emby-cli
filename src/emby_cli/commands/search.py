@@ -46,19 +46,31 @@ def _selector_count(args: argparse.Namespace) -> int:
     return sum(bool(x) for x in (item_id, query, use_all))
 
 
-def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
-    count = int(getattr(args, "count", SEARCH_COUNT_DEFAULT) or SEARCH_COUNT_DEFAULT)
+def validate_search_args(args: argparse.Namespace) -> str | None:
+    """Return an error message if selectors are invalid; else ``None``."""
+    raw_count = getattr(args, "count", SEARCH_COUNT_DEFAULT)
+    count = SEARCH_COUNT_DEFAULT if raw_count is None else int(raw_count)
     if count < 1:
-        print("error: --count must be >= 1", file=sys.stderr)
+        return "error: --count must be >= 1"
+    if _selector_count(args) != 1:
+        return "Provide exactly one of --id, --search, or --all"
+    return None
+
+
+def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
+    err = validate_search_args(args)
+    if err:
+        if err.startswith("error:"):
+            print(err, file=sys.stderr)
+        else:
+            print(err)
         sys.exit(1)
 
+    raw_count = getattr(args, "count", SEARCH_COUNT_DEFAULT)
+    count = SEARCH_COUNT_DEFAULT if raw_count is None else int(raw_count)
     item_id = (getattr(args, "id", None) or "").strip() or None
     query = (getattr(args, "search", None) or "").strip() or None
     use_all = bool(getattr(args, "all", False))
-
-    if _selector_count(args) != 1:
-        print("Provide exactly one of --id, --search, or --all")
-        sys.exit(1)
 
     if getattr(args, "library", False):
         libraries = client.get_libraries()
