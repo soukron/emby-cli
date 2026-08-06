@@ -22,9 +22,55 @@ def test_resolve_server_from_args():
     assert resolve_server(args) == "http://x:8096"
 
 
-def test_resolve_server_missing_raises():
+def test_resolve_server_missing_raises(tmp_path, monkeypatch):
+    monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("EMBY_SERVER", raising=False)
     args = argparse.Namespace(server=None)
     with pytest.raises(CredentialError, match="EMBY_SERVER"):
+        resolve_server(args, prompt=False)
+
+
+def test_resolve_server_from_single_cache(tmp_path, monkeypatch):
+    from emby_cli.auth_cache import AuthCacheEntry, save_auth_cache
+
+    monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("EMBY_SERVER", raising=False)
+    save_auth_cache(
+        AuthCacheEntry.create("http://cached:8096", "alice", "tok", "uid")
+    )
+    args = argparse.Namespace(server=None)
+    assert resolve_server(args, prompt=False) == "http://cached:8096"
+
+
+def test_resolve_server_two_cache_files_same_host_raises(tmp_path, monkeypatch):
+    from emby_cli.auth_cache import AuthCacheEntry, save_auth_cache
+
+    monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("EMBY_SERVER", raising=False)
+    save_auth_cache(
+        AuthCacheEntry.create("http://host:8096", "alice", "tok-a", "uid-a")
+    )
+    save_auth_cache(
+        AuthCacheEntry.create("http://host:8096", "bob", "tok-b", "uid-b")
+    )
+    args = argparse.Namespace(server=None)
+    with pytest.raises(CredentialError, match="Multiple cached sessions"):
+        resolve_server(args, prompt=False)
+
+
+def test_resolve_server_multiple_cache_files_raises(tmp_path, monkeypatch):
+    from emby_cli.auth_cache import AuthCacheEntry, save_auth_cache
+
+    monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("EMBY_SERVER", raising=False)
+    save_auth_cache(
+        AuthCacheEntry.create("http://a:8096", "alice", "tok-a", "uid-a")
+    )
+    save_auth_cache(
+        AuthCacheEntry.create("http://b:8096", "bob", "tok-b", "uid-b")
+    )
+    args = argparse.Namespace(server=None)
+    with pytest.raises(CredentialError, match="Multiple cached sessions"):
         resolve_server(args, prompt=False)
 
 

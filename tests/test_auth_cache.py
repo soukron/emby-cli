@@ -8,8 +8,10 @@ from emby_cli.auth_cache import (
     AuthCacheEntry,
     auth_cache_file,
     clear_auth_cache,
+    list_auth_cache_entries,
     load_auth_cache,
     save_auth_cache,
+    unique_cached_server_urls,
 )
 
 
@@ -89,3 +91,18 @@ def test_auth_cache_file_stable(tmp_path, monkeypatch):
     b = auth_cache_file("http://host:8096", "alice")
     assert a == b
     assert a.suffix == ".cache"
+
+
+def test_unique_cached_server_urls(tmp_path, monkeypatch):
+    monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
+    save_auth_cache(
+        AuthCacheEntry.create("http://a:8096", "alice", "tok-a", "uid-a")
+    )
+    save_auth_cache(
+        AuthCacheEntry.create("http://a:8096", "bob", "tok-b", "uid-b")
+    )
+    save_auth_cache(
+        AuthCacheEntry.create("http://b:8096", "carol", "tok-c", "uid-c")
+    )
+    assert unique_cached_server_urls() == ["http://a:8096", "http://b:8096"]
+    assert len(list_auth_cache_entries()) == 3

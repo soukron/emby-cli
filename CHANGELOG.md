@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Validate `search` / `download` / `play` selectors before authenticating (fail fast without touching the server).
+- If `--server` / `EMBY_SERVER` is unset, use the AccessToken cache only when there is exactly one cache file; multiple sessions require an explicit server.
 - `info`: output grouped under Connection / Server / Content sections; libraries shown as count only.
 - Auth by username: no longer prints `Authenticating…` / `OK` on success (failures still go to stderr).
 - AccessToken cache on disk for username/password auth (`~/.cache/emby-cli/`, `EMBY_CACHE_DIR`, `EMBY_NO_AUTH_CACHE=1`); never stores the password.

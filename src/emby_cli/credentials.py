@@ -7,6 +7,8 @@ import os
 import sys
 from getpass import getpass
 
+from emby_cli.auth_cache import list_auth_cache_entries
+
 
 class CredentialError(Exception):
     """Missing or invalid credentials for the requested mode."""
@@ -25,9 +27,32 @@ def resolve_server(
     *,
     prompt: bool = False,
 ) -> str:
+    """Resolve server URL from args/env, a single cached session, or prompt.
+
+    When *prompt* is False and no server is configured, exactly one AccessToken
+    cache file may supply the server (and later the session). Multiple cache
+    files require an explicit ``--server`` / ``EMBY_SERVER`` so the user is
+    not ambiguous.
+    """
     value = _from_args_or_env(args, "server", "EMBY_SERVER")
     if value:
         return value.rstrip("/")
+
+    if not prompt:
+        entries = list_auth_cache_entries()
+        if len(entries) == 1:
+            return entries[0].server_url
+        if len(entries) > 1:
+            listed = "\n".join(
+                f"  - {e.username} @ {e.server_url}" for e in sorted(
+                    entries, key=lambda e: (e.server_url, e.username)
+                )
+            )
+            raise CredentialError(
+                "Multiple cached sessions; provide --server or set EMBY_SERVER:\n"
+                f"{listed}"
+            )
+
     if prompt and sys.stdin.isatty():
         entered = input("Emby server URL: ").strip()
         if entered:

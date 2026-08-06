@@ -103,12 +103,7 @@ def clear_auth_cache(
             path.unlink()
 
 
-def _read_entry(
-    path: Path,
-    *,
-    server_url: str,
-    username: str | None,
-) -> AuthCacheEntry | None:
+def _parse_entry(path: Path) -> AuthCacheEntry | None:
     if not path.is_file():
         return None
     try:
@@ -116,28 +111,54 @@ def _read_entry(
         entry = AuthCacheEntry(**data)
     except (OSError, TypeError, ValueError, json.JSONDecodeError):
         return None
+    if not entry.access_token or not entry.user_id or not entry.server_url:
+        return None
+    entry.server_url = entry.server_url.rstrip("/")
+    return entry
 
-    if entry.server_url.rstrip("/") != server_url.rstrip("/"):
+
+def list_auth_cache_entries() -> list[AuthCacheEntry]:
+    """Return all valid cache entries (empty if cache disabled or missing)."""
+    if _auth_cache_disabled():
+        return []
+    root = cache_dir()
+    if not root.is_dir():
+        return []
+    entries: list[AuthCacheEntry] = []
+    for path in root.glob("*.cache"):
+        entry = _parse_entry(path)
+        if entry is not None:
+            entries.append(entry)
+    return entries
+
+
+def unique_cached_server_urls() -> list[str]:
+    """Distinct ``server_url`` values from cache, sorted."""
+    return sorted({e.server_url for e in list_auth_cache_entries()})
+
+
+def _read_entry(
+    path: Path,
+    *,
+    server_url: str,
+    username: str | None,
+) -> AuthCacheEntry | None:
+    entry = _parse_entry(path)
+    if entry is None:
+        return None
+    if entry.server_url != server_url.rstrip("/"):
         return None
     if username is not None and entry.username != username:
-        return None
-    if not entry.access_token or not entry.user_id:
         return None
     return entry
 
 
 def _find_latest_for_server(server_url: str) -> AuthCacheEntry | None:
-    root = cache_dir()
-    if not root.is_dir():
-        return None
-
-    matches: list[tuple[str, AuthCacheEntry]] = []
-    for path in root.glob("*.cache"):
-        entry = _read_entry(path, server_url=server_url, username=None)
-        if entry is not None:
-            matches.append((entry.saved_at, entry))
-
+    matches = [
+        e for e in list_auth_cache_entries()
+        if e.server_url == server_url.rstrip("/")
+    ]
     if not matches:
         return None
-    matches.sort(key=lambda item: item[0], reverse=True)
-    return matches[0][1]
+    matches.sort(key=lambda e: e.saved_at, reverse=True)
+    return matches[0]

@@ -36,7 +36,7 @@ Set environment variables (or pass CLI flags):
 
 See `.env.example`. The app does not load `.env` itself — `source` it or export vars.
 
-With username/password, the AccessToken from Emby is cached on disk (never the password). Later runs reuse it; if the cache is missing but credentials are in env/flags, login happens transparently. Use `emby-cli login` for an interactive login that always refreshes the cache. API keys are not cached.
+With username/password, the AccessToken from Emby is cached on disk (never the password). Later runs reuse it; if the cache is missing but credentials are in env/flags, login happens transparently. After `emby-cli login`, if there is exactly one cache file, `--server` / `EMBY_SERVER` is optional. Multiple cached sessions require an explicit server. Use `emby-cli login` for an interactive login that always refreshes the cache. API keys are not cached.
 
 ## Usage
 

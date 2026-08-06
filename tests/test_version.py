@@ -11,7 +11,9 @@ from emby_cli.commands.version import cmd_version
 from emby_cli.client import EmbyClient
 
 
-def test_cmd_version_client_only(capsys):
+def test_cmd_version_client_only(capsys, tmp_path, monkeypatch):
+    monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("EMBY_SERVER", raising=False)
     args = argparse.Namespace(server=None, api_key=None, username=None, password=None)
     with patch("emby_cli.commands.version.get_version", return_value="0.2.0"):
         cmd_version(args)

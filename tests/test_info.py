@@ -12,7 +12,9 @@ from emby_cli.client import EmbyClient
 from emby_cli.commands.info import cmd_info
 
 
-def test_info_requires_server():
+def test_info_requires_server(tmp_path, monkeypatch):
+    monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("EMBY_SERVER", raising=False)
     args = argparse.Namespace(server=None, api_key="k", username=None, password=None)
     with pytest.raises(SystemExit) as exc:
         cmd_info(args)
