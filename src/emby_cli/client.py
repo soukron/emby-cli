@@ -21,6 +21,9 @@ from emby_cli.constants import (
 )
 from emby_cli.util import remux_segments
 
+_DEVICE_ID = hashlib.md5(CLIENT_NAME.encode()).hexdigest()
+
+
 class EmbyClient:
     def __init__(self, server_url: str, api_key: str | None = None):
         self.server_url = server_url.rstrip("/")
@@ -29,9 +32,9 @@ class EmbyClient:
         self.access_token: str | None = api_key
         self.session = requests.Session()
         self.session.headers.update({
-            "X-Emby-Client": "emby-cli",
-            "X-Emby-Device-Name": "emby-cli",
-            "X-Emby-Device-Id": hashlib.md5(b"emby-cli").hexdigest(),
+            "X-Emby-Client": CLIENT_NAME,
+            "X-Emby-Device-Name": DEVICE_NAME,
+            "X-Emby-Device-Id": _DEVICE_ID,
             "X-Emby-Client-Version": "1.0.0",
         })
 
@@ -42,9 +45,9 @@ class EmbyClient:
 
     def _auth_header(self) -> dict:
         parts = [
-            'MediaBrowser Client="emby-cli"',
-            'Device="emby-cli"',
-            f'DeviceId="{hashlib.md5(b"emby-cli").hexdigest()}"',
+            f'MediaBrowser Client="{CLIENT_NAME}"',
+            f'Device="{DEVICE_NAME}"',
+            f'DeviceId="{_DEVICE_ID}"',
             'Version="1.0.0"',
         ]
         if self.access_token:
@@ -224,7 +227,7 @@ class EmbyClient:
                     f"(SupportsTranscoding={source.get('SupportsTranscoding')}). "
                     "Try --method download or --method hls."
                 )
-            device_id = hashlib.md5(b"emby-cli").hexdigest()
+            device_id = _DEVICE_ID
             qs = {
                 "DeviceId": device_id,
                 "MediaSourceId": source.get("Id") or media_source_id or item_id,
@@ -403,7 +406,7 @@ class EmbyClient:
             raise RuntimeError(f"No media sources for item {item_id}")
         media_source_id = sources[0]["Id"]
 
-        device_id = hashlib.md5(b"emby-cli").hexdigest()
+        device_id = _DEVICE_ID
         play_session_id = hashlib.md5(
             f"hls-{item_id}-{time.time()}".encode()
         ).hexdigest()
