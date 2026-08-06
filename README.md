@@ -31,12 +31,12 @@ Set environment variables (or pass CLI flags):
 | `EMBY_METHOD` | `download`, `stream`, or `hls` |
 | `EMBY_PLAYER` | External player for `play` |
 | `EMBY_ITEM_ID` | Default for `--id` (item mode / play) |
-| `EMBY_CACHE_DIR` | Session cache directory (default `~/.cache/emby-cli`) |
+| `EMBY_CACHE_DIR` | Credentials directory (default `~/.cache/emby-cli`; file `auth.json`) |
 | `EMBY_NO_AUTH_CACHE` | Set to `1` to disable reading/writing the AccessToken cache |
 
 See `.env.example`. The app does not load `.env` itself — `source` it or export vars.
 
-With username/password, the AccessToken from Emby is cached on disk (never the password). Later runs reuse it; if the cache is missing but credentials are in env/flags, login happens transparently. After `emby-cli login`, if there is exactly one cache file, `--server` / `EMBY_SERVER` is optional. Multiple cached sessions require an explicit server. Use `emby-cli login` for an interactive login that always refreshes the cache. API keys are not cached.
+With username/password, sessions are stored in a single kubeconfig-style `auth.json` (`contexts` + `current_context`). `emby-cli login` saves a server entry and makes it active. Without `--server`, commands use the active server. Manage entries with `emby-cli config` (`current-server`, `get-servers`, `use-server`, `view`). API keys are not stored.
 
 ## Usage
 
@@ -44,6 +44,10 @@ With username/password, the AccessToken from Emby is cached on disk (never the p
 emby-cli help
 emby-cli login
 emby-cli logout
+emby-cli config get-servers
+emby-cli config use-server 'user@http://emby:8096'
+emby-cli config current-server
+emby-cli config view
 emby-cli version
 emby-cli info
 emby-cli search --media-item --search "Title"

@@ -30,36 +30,24 @@ def test_resolve_server_missing_raises(tmp_path, monkeypatch):
         resolve_server(args, prompt=False)
 
 
-def test_resolve_server_from_single_cache(tmp_path, monkeypatch):
-    from emby_cli.auth_cache import AuthCacheEntry, save_auth_cache
+def test_resolve_server_from_active_context(tmp_path, monkeypatch):
+    from emby_cli.auth_cache import AuthCacheEntry, save_auth_cache, upsert_context
 
     monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
     monkeypatch.delenv("EMBY_SERVER", raising=False)
     save_auth_cache(
-        AuthCacheEntry.create("http://cached:8096", "alice", "tok", "uid")
+        AuthCacheEntry.create("http://a:8096", "alice", "tok-a", "uid-a")
+    )
+    upsert_context(
+        AuthCacheEntry.create("http://b:8096", "bob", "tok-b", "uid-b"),
+        activate=True,
     )
     args = argparse.Namespace(server=None)
-    assert resolve_server(args, prompt=False) == "http://cached:8096"
+    assert resolve_server(args, prompt=False) == "http://b:8096"
 
 
-def test_resolve_server_two_cache_files_same_host_raises(tmp_path, monkeypatch):
-    from emby_cli.auth_cache import AuthCacheEntry, save_auth_cache
-
-    monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
-    monkeypatch.delenv("EMBY_SERVER", raising=False)
-    save_auth_cache(
-        AuthCacheEntry.create("http://host:8096", "alice", "tok-a", "uid-a")
-    )
-    save_auth_cache(
-        AuthCacheEntry.create("http://host:8096", "bob", "tok-b", "uid-b")
-    )
-    args = argparse.Namespace(server=None)
-    with pytest.raises(CredentialError, match="Multiple cached sessions"):
-        resolve_server(args, prompt=False)
-
-
-def test_resolve_server_multiple_cache_files_raises(tmp_path, monkeypatch):
-    from emby_cli.auth_cache import AuthCacheEntry, save_auth_cache
+def test_resolve_server_ignores_inactive_without_flag(tmp_path, monkeypatch):
+    from emby_cli.auth_cache import AuthCacheEntry, save_auth_cache, set_current_context
 
     monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
     monkeypatch.delenv("EMBY_SERVER", raising=False)
@@ -69,9 +57,9 @@ def test_resolve_server_multiple_cache_files_raises(tmp_path, monkeypatch):
     save_auth_cache(
         AuthCacheEntry.create("http://b:8096", "bob", "tok-b", "uid-b")
     )
+    set_current_context("alice@http://a:8096")
     args = argparse.Namespace(server=None)
-    with pytest.raises(CredentialError, match="Multiple cached sessions"):
-        resolve_server(args, prompt=False)
+    assert resolve_server(args, prompt=False) == "http://a:8096"
 
 
 def test_resolve_password_none_when_unset(monkeypatch):

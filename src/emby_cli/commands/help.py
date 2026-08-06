@@ -7,6 +7,7 @@ COMMAND_SUMMARIES: tuple[tuple[str, str], ...] = (
     ("help", "List available commands"),
     ("login", "Authenticate and cache an AccessToken"),
     ("logout", "Revoke cached AccessToken and delete local session"),
+    ("config", "View and switch saved servers (credentials file)"),
     ("version", "Show emby-cli version"),
     ("info", "Show session user, server details, libraries, and item counts"),
     ("search", "Search media items or libraries"),
@@ -23,4 +24,4 @@ def cmd_help() -> None:
         print(f"  {name:<{width}}  {summary}")
     print("\nUse `emby-cli <command> -h` for options.")
     print("Global flags: --server / -s, --api-key / -k, --username / -u, --password / -p")
-    print("Auth: API key, `emby-cli login`, or username/password (AccessToken cached on disk).")
+    print("Auth: API key, `login`/`logout`, or `config` contexts (`auth.json`).")

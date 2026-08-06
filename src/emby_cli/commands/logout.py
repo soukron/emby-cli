@@ -1,4 +1,4 @@
-"""logout command — revoke AccessToken and clear local cache."""
+"""logout command — revoke AccessToken and clear local context."""
 
 from __future__ import annotations
 
@@ -10,19 +10,18 @@ import requests
 from emby_cli.auth_cache import (
     AuthCacheEntry,
     clear_auth_cache,
-    list_auth_cache_entries,
+    get_active_entry,
     load_auth_cache,
 )
 from emby_cli.client import EmbyClient
 from emby_cli.credentials import (
     CredentialError,
     resolve_operational_auth,
-    resolve_server,
 )
 
 
 def _resolve_cache_entry(args: argparse.Namespace) -> AuthCacheEntry:
-    """Pick which cached session to log out of."""
+    """Pick which cached session to log out of (default: active context)."""
     api_key, username, _password = resolve_operational_auth(args)
     if api_key:
         raise CredentialError(
@@ -30,28 +29,18 @@ def _resolve_cache_entry(args: argparse.Namespace) -> AuthCacheEntry:
         )
 
     server_arg = (getattr(args, "server", None) or "").strip() or None
-    if not server_arg:
-        # Same rule as resolve_server: only auto-pick when a single file exists.
-        entries = list_auth_cache_entries()
-        if len(entries) == 1:
-            return entries[0]
-        if not entries:
-            raise CredentialError(
-                "No cached session; nothing to log out"
-            )
-        listed = "\n".join(
-            f"  - {e.username} @ {e.server_url}"
-            for e in sorted(entries, key=lambda e: (e.server_url, e.username))
-        )
-        raise CredentialError(
-            "Multiple cached sessions; provide --server (and --username if needed):\n"
-            f"{listed}"
-        )
+    if not server_arg and username is None:
+        active = get_active_entry()
+        if active is None:
+            raise CredentialError("No cached session; nothing to log out")
+        return active
 
-    try:
-        server = resolve_server(args, prompt=False)
-    except CredentialError:
-        server = server_arg.rstrip("/")
+    server = (server_arg or "").rstrip("/")
+    if not server:
+        active = get_active_entry()
+        if active is None:
+            raise CredentialError("No cached session; nothing to log out")
+        server = active.server_url
 
     entry = load_auth_cache(server_url=server, username=username)
     if entry is None:

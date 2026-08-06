@@ -2,13 +2,15 @@
 
 ## Unreleased
 
+- Credential store is a single kubeconfig-style `auth.json` (`contexts` + `current_context`); legacy `*.cache` files are migrated on first use.
+- `emby-cli config`: `current-server`, `get-servers`, `use-server`, `view` (tokens redacted).
+- Without `--server` / `EMBY_SERVER`, operational commands use the **active context** server.
 - Validate `search` / `download` / `play` selectors before authenticating (fail fast without touching the server).
-- `logout`: `POST /Sessions/Logout` when possible, always delete the local AccessToken cache file.
-- If `--server` / `EMBY_SERVER` is unset, use the AccessToken cache only when there is exactly one cache file; multiple sessions require an explicit server.
+- `logout`: `POST /Sessions/Logout` when possible, always remove the context from `auth.json`.
 - `info`: output grouped under Connection / Server / Content sections; libraries shown as count only.
 - Auth by username: no longer prints `Authenticating…` / `OK` on success (failures still go to stderr).
-- AccessToken cache on disk for username/password auth (`~/.cache/emby-cli/`, `EMBY_CACHE_DIR`, `EMBY_NO_AUTH_CACHE=1`); never stores the password.
-- `login`: interactive (or env/flags) AuthenticateByName and save cache.
+- AccessToken cache on disk for username/password auth (`EMBY_CACHE_DIR`, `EMBY_NO_AUTH_CACHE=1`); never stores the password.
+- `login`: interactive (or env/flags) AuthenticateByName, upsert context, and set it active.
 - Operational commands: reuse cached token; if miss but env/CLI credentials exist, login transparently; on HTTP 401, clear cache and re-auth once when password is known.
 
 ## 0.3.0

@@ -7,7 +7,7 @@ import os
 import sys
 from getpass import getpass
 
-from emby_cli.auth_cache import list_auth_cache_entries
+from emby_cli.auth_cache import get_active_entry
 
 
 class CredentialError(Exception):
@@ -27,37 +27,28 @@ def resolve_server(
     *,
     prompt: bool = False,
 ) -> str:
-    """Resolve server URL from args/env, a single cached session, or prompt.
+    """Resolve server URL from args/env, active context, or interactive prompt.
 
-    When *prompt* is False and no server is configured, exactly one AccessToken
-    cache file may supply the server (and later the session). Multiple cache
-    files require an explicit ``--server`` / ``EMBY_SERVER`` so the user is
-    not ambiguous.
+    When *prompt* is False and no server is configured, the active context's
+    ``server_url`` is used (``emby-cli config use-server`` / ``login``).
     """
     value = _from_args_or_env(args, "server", "EMBY_SERVER")
     if value:
         return value.rstrip("/")
 
     if not prompt:
-        entries = list_auth_cache_entries()
-        if len(entries) == 1:
-            return entries[0].server_url
-        if len(entries) > 1:
-            listed = "\n".join(
-                f"  - {e.username} @ {e.server_url}" for e in sorted(
-                    entries, key=lambda e: (e.server_url, e.username)
-                )
-            )
-            raise CredentialError(
-                "Multiple cached sessions; provide --server or set EMBY_SERVER:\n"
-                f"{listed}"
-            )
+        active = get_active_entry()
+        if active is not None:
+            return active.server_url
 
     if prompt and sys.stdin.isatty():
         entered = input("Emby server URL: ").strip()
         if entered:
             return entered.rstrip("/")
-    raise CredentialError("Provide --server or set EMBY_SERVER")
+    raise CredentialError(
+        "Provide --server or set EMBY_SERVER "
+        "(or run `emby-cli login` / `emby-cli config use-server`)"
+    )
 
 
 def resolve_username(

@@ -13,6 +13,7 @@ warnings.filterwarnings("ignore", message="urllib3 v2 only supports OpenSSL")
 import requests
 
 from emby_cli.client import EmbyClient
+from emby_cli.commands.config import cmd_config
 from emby_cli.commands.download import cmd_download, validate_download_args
 from emby_cli.commands.help import COMMAND_SUMMARIES, cmd_help
 from emby_cli.commands.info import cmd_info
@@ -50,6 +51,30 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("help", help=_help_by_name["help"])
     sub.add_parser("login", help=_help_by_name["login"])
     sub.add_parser("logout", help=_help_by_name["logout"])
+
+    cfg = sub.add_parser("config", help=_help_by_name["config"])
+    cfg_sub = cfg.add_subparsers(dest="config_command", required=True)
+    cfg_sub.add_parser(
+        "current-server",
+        help="Display the current server",
+    )
+    cfg_sub.add_parser(
+        "get-servers",
+        help="Describe one or many saved servers",
+    )
+    use_srv = cfg_sub.add_parser(
+        "use-server",
+        help="Set the current server in the credentials file",
+    )
+    use_srv.add_argument(
+        "server_name",
+        metavar="NAME",
+        help="Server entry name (user@url) or unique server URL",
+    )
+    cfg_sub.add_parser(
+        "view",
+        help="Display credentials file (tokens redacted)",
+    )
 
     dl = sub.add_parser(
         "download",
@@ -241,6 +266,10 @@ def main() -> None:
 
     if args.command == "logout":
         cmd_logout(args)
+        return
+
+    if args.command == "config":
+        cmd_config(args)
         return
 
     if args.command == "version":
