@@ -15,10 +15,12 @@ import requests
 from emby_cli.client import EmbyClient
 from emby_cli.commands.batch import cmd_batch
 from emby_cli.commands.download import cmd_download
+from emby_cli.commands.info import cmd_info
 from emby_cli.commands.list import cmd_list
 from emby_cli.commands.play import cmd_play
 from emby_cli.commands.search import cmd_search
 from emby_cli.commands.sync import cmd_sync
+from emby_cli.commands.version import cmd_version
 from emby_cli.constants import DEFAULT_OUTPUT
 
 
@@ -78,9 +80,9 @@ def build_parser() -> argparse.ArgumentParser:
                          "/Applications/VLC.app/Contents/MacOS/VLC")
     pl.add_argument("--wait", action="store_true",
                     help="Block until the player process exits (default: detach and return)")
-    pl.add_argument("--pick-best-item", type=int, choices=[0, 1], default=0,
-                    help="On ambiguous search results: 0=list and fail (default), "
-                         "1=auto-select best ≤1080p")
+    pl.add_argument("--pick-best-item", action="store_true",
+                    help="On ambiguous search results, auto-select best ≤1080p "
+                         "(default: list matches and fail)")
 
     sy = sub.add_parser("sync", help="Sync all libraries (or one with --library)")
     sy.add_argument("--library", "-l", default=env("EMBY_LIBRARY"), help="Specific library to sync (env: EMBY_LIBRARY)")
@@ -106,9 +108,16 @@ def build_parser() -> argparse.ArgumentParser:
                     choices=["download", "stream", "hls"],
                     help="Download method: 'download' (API Download), 'stream' (browser-like original.*), "
                          "or 'hls' (stream chunks + remux) (env: EMBY_METHOD)")
-    ba.add_argument("--pick-best-item", type=int, choices=[0, 1], default=0,
-                    help="On ambiguous search results: 0=fail the line (default), "
-                         "1=auto-select best ≤1080p (also per episode version in a season)")
+    ba.add_argument("--pick-best-item", action="store_true",
+                    help="On ambiguous search results, auto-select best ≤1080p "
+                         "(also per episode version in a season; default: fail the line)")
+
+    sub.add_parser("version", help="Show emby-cli version (and Emby server version if credentials work)")
+    sub.add_parser(
+        "info",
+        help="Show session user, server details, libraries, and item counts "
+             "(via /Items/Counts; versions may inflate totals)",
+    )
 
     return p
 
@@ -116,6 +125,14 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
+
+    if args.command == "version":
+        cmd_version(args)
+        return
+
+    if args.command == "info":
+        cmd_info(args)
+        return
 
     if not args.server:
         parser.error("Provide --server or set EMBY_SERVER")

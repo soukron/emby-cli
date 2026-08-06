@@ -137,7 +137,7 @@ def _ambiguous(
     excluded: set[str] | None = None,
     hint: str = (
         "Use --item-id with an ID from the list above, "
-        "or pass --pick-best-item=1 to auto-select."
+        "or pass --pick-best-item to auto-select."
     ),
 ) -> None:
     print_item_choices(items, excluded=excluded)

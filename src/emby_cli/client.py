@@ -16,6 +16,8 @@ from emby_cli.constants import (
     CLIENT_NAME,
     DEFAULT_CHUNK,
     DEVICE_NAME,
+    INFO_RETRIES,
+    INFO_TIMEOUT,
     ITEM_FIELDS,
     MAX_RETRIES,
     RETRY_BACKOFF_BASE,
@@ -71,35 +73,57 @@ class EmbyClient:
             parts.append(f'Token="{self.access_token}"')
         return {"X-Emby-Authorization": ", ".join(parts)}
 
-    def _request_with_retry(self, method: str, path: str, **kwargs) -> requests.Response:
+    def _request_with_retry(
+        self,
+        method: str,
+        path: str,
+        *,
+        retries: int | None = None,
+        **kwargs,
+    ) -> requests.Response:
         kwargs.setdefault("headers", self._auth_header())
         url = self._url(path)
+        max_attempts = MAX_RETRIES if retries is None else max(1, retries)
         resp = None
-        for attempt in range(1, MAX_RETRIES + 1):
+        for attempt in range(1, max_attempts + 1):
             try:
                 resp = self.session.request(method, url, **kwargs)
                 resp.raise_for_status()
                 return resp
             except (requests.ConnectionError, requests.Timeout) as exc:
-                if attempt == MAX_RETRIES:
+                if attempt == max_attempts:
                     raise
                 wait = RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
-                print(f"  Connection error (attempt {attempt}/{MAX_RETRIES}), retrying in {wait}s: {exc}")
+                print(f"  Connection error (attempt {attempt}/{max_attempts}), retrying in {wait}s: {exc}")
                 time.sleep(wait)
             except requests.HTTPError:
-                if resp is not None and resp.status_code >= 500 and attempt < MAX_RETRIES:
+                if resp is not None and resp.status_code >= 500 and attempt < max_attempts:
                     wait = RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
-                    print(f"  Server error {resp.status_code} (attempt {attempt}/{MAX_RETRIES}), retrying in {wait}s")
+                    print(f"  Server error {resp.status_code} (attempt {attempt}/{max_attempts}), retrying in {wait}s")
                     time.sleep(wait)
                 else:
                     raise
         raise RuntimeError("unreachable")
 
-    def _get(self, path: str, params: dict | None = None, **kwargs) -> requests.Response:
-        return self._request_with_retry("GET", path, params=params, **kwargs)
+    def _get(
+        self,
+        path: str,
+        params: dict | None = None,
+        *,
+        retries: int | None = None,
+        **kwargs,
+    ) -> requests.Response:
+        return self._request_with_retry("GET", path, params=params, retries=retries, **kwargs)
 
-    def _post(self, path: str, payload: dict | None = None) -> requests.Response:
-        return self._request_with_retry("POST", path, json=payload)
+    def _post(
+        self,
+        path: str,
+        payload: dict | None = None,
+        *,
+        retries: int | None = None,
+        **kwargs,
+    ) -> requests.Response:
+        return self._request_with_retry("POST", path, json=payload, retries=retries, **kwargs)
 
     @staticmethod
     def _ensure_api_key(url: str, token: str | None) -> str:
@@ -119,9 +143,21 @@ class EmbyClient:
 
     # -- auth ----------------------------------------------------------------
 
-    def authenticate(self, username: str, password: str) -> None:
+    def authenticate(
+        self,
+        username: str,
+        password: str,
+        *,
+        timeout: float | None = None,
+        retries: int | None = None,
+    ) -> None:
         data = {"Username": username, "Pw": password}
-        resp = self._post("/Users/AuthenticateByName", data)
+        kwargs: dict = {}
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        if retries is not None:
+            kwargs["retries"] = retries
+        resp = self._post("/Users/AuthenticateByName", data, **kwargs)
         body = resp.json()
         try:
             self.access_token = body["AccessToken"]
@@ -149,11 +185,83 @@ class EmbyClient:
         self.user_id = users[0]["Id"]
         return self.user_id
 
+    # -- system --------------------------------------------------------------
+
+    def get_system_info(
+        self,
+        *,
+        timeout: float | None = None,
+        retries: int | None = None,
+    ) -> dict:
+        """Authenticated server info (``GET /System/Info``)."""
+        kwargs: dict = {}
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        if retries is not None:
+            kwargs["retries"] = retries
+        return self._get("/System/Info", **kwargs).json()
+
+    def get_current_user(
+        self,
+        *,
+        timeout: float | None = None,
+        retries: int | None = None,
+    ) -> dict:
+        """Current user for the API key / session (``GET /Users/Me``)."""
+        kwargs: dict = {}
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        if retries is not None:
+            kwargs["retries"] = retries
+        return self._get("/Users/Me", **kwargs).json()
+
+    def probe_session(
+        self,
+        *,
+        username: str | None = None,
+        password: str = "",
+    ) -> tuple[dict, dict]:
+        """One-shot auth + ``/Users/Me`` + ``/System/Info`` (no retries)."""
+        kwargs = {"timeout": INFO_TIMEOUT, "retries": INFO_RETRIES}
+        if username is not None:
+            self.authenticate(username, password, **kwargs)
+        user = self.get_current_user(**kwargs)
+        info = self.get_system_info(**kwargs)
+        return user, info
+
+    def get_item_counts(
+        self,
+        user_id: str | None = None,
+        *,
+        timeout: float | None = None,
+        retries: int | None = None,
+    ) -> dict:
+        """Aggregate library counts (``GET /Items/Counts``)."""
+        params: dict = {}
+        if user_id:
+            params["UserId"] = user_id
+        kwargs: dict = {}
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        if retries is not None:
+            kwargs["retries"] = retries
+        return self._get("/Items/Counts", params=params or None, **kwargs).json()
+
     # -- browse --------------------------------------------------------------
 
-    def get_libraries(self) -> list[dict]:
+    def get_libraries(
+        self,
+        *,
+        timeout: float | None = None,
+        retries: int | None = None,
+    ) -> list[dict]:
         uid = self.resolve_user_id()
-        resp = self._get(f"/Users/{uid}/Views")
+        kwargs: dict = {}
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        if retries is not None:
+            kwargs["retries"] = retries
+        resp = self._get(f"/Users/{uid}/Views", **kwargs)
         return resp.json().get("Items", [])
 
     def get_items(

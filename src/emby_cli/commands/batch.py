@@ -21,7 +21,7 @@ def cmd_batch(client: EmbyClient, args: argparse.Namespace) -> None:
     throttle = float(getattr(args, "throttle", 0) or 0)
     method = getattr(args, "method", "download")
     dry_run = bool(getattr(args, "dry_run", False))
-    pick_best = bool(getattr(args, "pick_best_item", 0))
+    pick_best = bool(getattr(args, "pick_best_item", False))
 
     if dry_run:
         print("*** DRY RUN — no files will be downloaded ***\n")

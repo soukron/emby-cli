@@ -99,7 +99,7 @@ def cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
             print_error(f"fetching item {item_id}: {exc}")
             sys.exit(1)
     else:
-        pick_best = bool(getattr(args, "pick_best_item", 0))
+        pick_best = bool(getattr(args, "pick_best_item", False))
         item = resolve_title_item(client, query, pick_best=pick_best)
         if item is None:
             sys.exit(1)
