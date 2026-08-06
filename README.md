@@ -11,11 +11,17 @@ CLI to **list, search, play, and download/backup** original media files from an 
 pip install emby-cli
 ```
 
-Development (editable):
+Development (from a clone of this repo):
 
 ```bash
-git clone https://github.com/soukron/emby-cli.git
-cd emby-cli
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+In the gmbros.net ops tree (`emby-downloader/`), use the root Makefile instead:
+
+```bash
+cd ~/.local/gmbros.net/emby-downloader
 make install
 ```
 
@@ -54,10 +60,17 @@ Download methods (`-m` / `EMBY_METHOD`):
 ## Development
 
 ```bash
-make install          # .venv + editable install
-make test
-make build && make check
-make push             # push current branch
+pip install -e ".[dev]"
+pytest -q
+python -m build && twine check dist/*
+```
+
+Ops Makefile (gmbros.net host only, not in this repo):
+
+```bash
+cd ~/.local/gmbros.net/emby-downloader
+make install / make test / make build / make check
+make push
 make release VERSION=0.1.0   # tag + gh release → CI publishes to PyPI
 ```
 
