@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections import defaultdict
 
 from emby_cli.client import EmbyClient
 from emby_cli.util import format_size, item_remote_size
@@ -66,20 +67,18 @@ def pick_best_item(items: list[dict]) -> dict | None:
 
     classified = [(it, item_video_width(it) or 0) for it in items]
 
-    # Prefer 1080p
     for it, w in classified:
         if classify_resolution(w) == "1080p":
             return it
 
-    # Then highest that is NOT 4K (720p, SD, etc.)
     non_4k = [(it, w) for it, w in classified if classify_resolution(w) != "4K"]
     if non_4k:
         non_4k.sort(key=lambda x: x[1], reverse=True)
         return non_4k[0][0]
 
-    # Only 4K available — take it as last resort
     classified.sort(key=lambda x: x[1], reverse=True)
     return classified[0][0]
+
 
 def item_label(item: dict) -> str:
     """Human-readable name; episodes include SxxExx prefix."""
@@ -106,7 +105,7 @@ def print_item_choices(
 
     header = (
         f"{'ID':<{id_w}}  {'Name':<{name_w}}  {'Year':<4}  {'Type':<8}  "
-        f"{'Res':>5}  {'Size':>9}  Note"
+        f"{'Res':>5}  {'Size':>9}"
     )
     print()
     print(header)
@@ -116,44 +115,76 @@ def print_item_choices(
     for it in items:
         iid = str(it.get("Id", ""))
         label = item_label(it)
+        if selected_id is not None and iid == selected_id:
+            label = f"* {label}"
+        elif iid in excluded:
+            label = f"- {label}"
         if len(label) > name_w:
             label = label[: name_w - 1] + "…"
         year = str(it.get("ProductionYear") or "?")
         itype = str(it.get("Type") or "?")
         res = classify_resolution(item_video_width(it))
         size = format_size(item_remote_size(it))
-        notes: list[str] = []
-        if selected_id is not None and iid == selected_id:
-            notes.append("selected")
-        if iid in excluded:
-            notes.append("year")
-        note = ", ".join(notes)
         print(
             f"{iid:<{id_w}}  {label:<{name_w}}  {year:<4}  {itype:<8}  "
-            f"{res:>5}  {size:>9}  {note}"
+            f"{res:>5}  {size:>9}"
         )
 
 
-def resolve_title_item(
+def _ambiguous(
+    items: list[dict],
+    *,
+    excluded: set[str] | None = None,
+    hint: str = (
+        "Use --item-id with an ID from the list above, "
+        "or pass --pick-best-item=1 to auto-select."
+    ),
+) -> None:
+    print_item_choices(items, excluded=excluded)
+    print(f"\n{hint}")
+
+
+def _pick_episode_versions(episodes: list[dict], *, pick_best: bool) -> list[dict] | None:
+    """Collapse multiple versions per SxxExx. Returns None if ambiguous without pick_best."""
+    groups: dict[tuple, list[dict]] = defaultdict(list)
+    for ep in episodes:
+        key = (ep.get("ParentIndexNumber"), ep.get("IndexNumber"))
+        groups[key].append(ep)
+
+    chosen: list[dict] = []
+    for key in sorted(groups.keys(), key=lambda k: (k[0] or 0, k[1] or 0)):
+        versions = groups[key]
+        if len(versions) == 1:
+            chosen.append(versions[0])
+            continue
+        if not pick_best:
+            print(f"  Multiple versions for S{key[0] or 0:02d}E{key[1] or 0:02d}; ambiguous:")
+            _ambiguous(versions)
+            return None
+        best = pick_best_item(versions)
+        if best is None:
+            _ambiguous(versions)
+            return None
+        print_item_choices(versions, selected=best)
+        chosen.append(best)
+    return chosen
+
+
+def resolve_title_items(
     client: EmbyClient,
     raw_line: str,
     *,
     pick_best: bool = False,
-) -> dict | None:
-    """Resolve a batch-style title line to one playable item.
+    allow_season_all: bool = False,
+) -> list[dict] | None:
+    """Resolve a title line to one or more items (strict).
 
-    When *pick_best* is True and several candidates remain after title/year
-    filters, chooses the best ≤1080p version (same as ``batch``). When False
-    (default), any ambiguity prints the table and returns None so the user
-    can pass ``--item-id``.
+    Returns a list of items to act on, or None on not-found / ambiguity.
+    When *allow_season_all* is True (batch) and the line is ``Sxx`` without
+    ``Exx``, returns all episodes in that season (with optional pick_best per
+    episode version). When False (play), season-only lines refuse.
     """
     title, season, episode, year = parse_title_line(raw_line)
-
-    def _ambiguous(items: list[dict], *, excluded: set[str] | None = None,
-                   hint: str = "Use --item-id with an ID from the list above, "
-                               "or pass --pick-best-item=1 to auto-select.") -> None:
-        print_item_choices(items, excluded=excluded)
-        print(f"\n{hint}")
 
     if season is not None:
         kind = f"S{season:02d}E{episode:02d}" if episode is not None else f"S{season:02d}"
@@ -195,13 +226,16 @@ def resolve_title_item(
             return None
 
         if episode is None:
-            print(f"  Season {season:02d} has {len(episodes)} episode(s); "
-                  "specify SxxExx or --item-id:")
-            print_item_choices(episodes)
-            return None
+            if not allow_season_all:
+                print(f"  Season {season:02d} has {len(episodes)} episode(s); "
+                      "specify SxxExx or --item-id:")
+                print_item_choices(episodes)
+                return None
+            picked = _pick_episode_versions(episodes, pick_best=pick_best)
+            return picked
 
         if len(episodes) == 1:
-            return episodes[0]
+            return [episodes[0]]
 
         if not pick_best:
             print(f"  {len(episodes)} versions for {kind}; ambiguous:")
@@ -213,7 +247,7 @@ def resolve_title_item(
             _ambiguous(episodes)
             return None
         print_item_choices(episodes, selected=best)
-        return best
+        return [best]
 
     # Movie path
     label = f"{title} ({year})" if year else title
@@ -239,7 +273,7 @@ def resolve_title_item(
     if len(candidates) == 1:
         best = candidates[0]
         print_item_choices(results, selected=best, excluded=excluded)
-        return best
+        return [best]
 
     if not pick_best:
         print(f"  {len(candidates)} matches; ambiguous:")
@@ -252,4 +286,19 @@ def resolve_title_item(
         return None
 
     print_item_choices(results, selected=best, excluded=excluded)
-    return best
+    return [best]
+
+
+def resolve_title_item(
+    client: EmbyClient,
+    raw_line: str,
+    *,
+    pick_best: bool = False,
+) -> dict | None:
+    """Resolve to a single item (play). Season-only lines are refused."""
+    items = resolve_title_items(
+        client, raw_line, pick_best=pick_best, allow_season_all=False
+    )
+    if not items:
+        return None
+    return items[0]

@@ -38,11 +38,16 @@ See `.env.example`. The app does not load `.env` itself — `source` it or expor
 ```bash
 emby-cli list
 emby-cli search "Title"
+emby-cli search "Title" --count 50
 emby-cli download -i <itemId> -o ./downloads
 emby-cli sync -l "Movies"
 emby-cli batch -F titles.txt -n
+emby-cli batch -F titles.txt --pick-best-item 1
 emby-cli play "Movie (2010)"
+emby-cli play "Show S01E01" --pick-best-item 1
 ```
+
+Title resolution (`play` / `batch`) is **strict** by default (year mismatch or multiple matches fail that line). Pass `--pick-best-item 1` to auto-select the best ≤1080p version. In `batch`, a season line like `Show S01` downloads the whole season (with the same pick-best rule per episode version).
 
 Download methods (`-m` / `EMBY_METHOD`):
 

@@ -6,7 +6,7 @@ import hashlib
 import shutil
 import time
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import m3u8
 import requests
@@ -16,39 +16,56 @@ from emby_cli.constants import (
     CLIENT_NAME,
     DEFAULT_CHUNK,
     DEVICE_NAME,
+    ITEM_FIELDS,
     MAX_RETRIES,
     RETRY_BACKOFF_BASE,
 )
 from emby_cli.util import remux_segments
+from emby_cli.version import get_version
 
 _DEVICE_ID = hashlib.md5(CLIENT_NAME.encode()).hexdigest()
 
 
+def _client_version() -> str:
+    ver = get_version()
+    return ver if ver and ver != "unknown" else "0.0.0"
+
+
 class EmbyClient:
     def __init__(self, server_url: str, api_key: str | None = None):
-        self.server_url = server_url.rstrip("/")
+        base = server_url.rstrip("/")
+        if base.lower().endswith("/emby"):
+            base = base[: -len("/emby")]
+        self.server_url = base.rstrip("/")
         self.api_key = api_key
         self.user_id: str | None = None
         self.access_token: str | None = api_key
         self.session = requests.Session()
+        ver = _client_version()
         self.session.headers.update({
             "X-Emby-Client": CLIENT_NAME,
             "X-Emby-Device-Name": DEVICE_NAME,
             "X-Emby-Device-Id": _DEVICE_ID,
-            "X-Emby-Client-Version": "1.0.0",
+            "X-Emby-Client-Version": ver,
         })
 
     # -- helpers -------------------------------------------------------------
 
     def _url(self, path: str) -> str:
-        return f"{self.server_url}/emby{path}" if not path.startswith("http") else path
+        if path.startswith("http"):
+            return path
+        if not path.startswith("/"):
+            path = "/" + path
+        if path.lower().startswith("/emby/"):
+            return f"{self.server_url}{path}"
+        return f"{self.server_url}/emby{path}"
 
     def _auth_header(self) -> dict:
         parts = [
             f'MediaBrowser Client="{CLIENT_NAME}"',
             f'Device="{DEVICE_NAME}"',
             f'DeviceId="{_DEVICE_ID}"',
-            'Version="1.0.0"',
+            f'Version="{_client_version()}"',
         ]
         if self.access_token:
             parts.append(f'Token="{self.access_token}"')
@@ -57,6 +74,7 @@ class EmbyClient:
     def _request_with_retry(self, method: str, path: str, **kwargs) -> requests.Response:
         kwargs.setdefault("headers", self._auth_header())
         url = self._url(path)
+        resp = None
         for attempt in range(1, MAX_RETRIES + 1):
             try:
                 resp = self.session.request(method, url, **kwargs)
@@ -68,8 +86,8 @@ class EmbyClient:
                 wait = RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
                 print(f"  Connection error (attempt {attempt}/{MAX_RETRIES}), retrying in {wait}s: {exc}")
                 time.sleep(wait)
-            except requests.HTTPError as exc:
-                if resp.status_code >= 500 and attempt < MAX_RETRIES:
+            except requests.HTTPError:
+                if resp is not None and resp.status_code >= 500 and attempt < MAX_RETRIES:
                     wait = RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
                     print(f"  Server error {resp.status_code} (attempt {attempt}/{MAX_RETRIES}), retrying in {wait}s")
                     time.sleep(wait)
@@ -83,18 +101,48 @@ class EmbyClient:
     def _post(self, path: str, payload: dict | None = None) -> requests.Response:
         return self._request_with_retry("POST", path, json=payload)
 
+    @staticmethod
+    def _ensure_api_key(url: str, token: str | None) -> str:
+        """Append api_key= to *url* when missing (for external players / HLS)."""
+        if not token:
+            return url
+        parsed = urlparse(url)
+        qs = parse_qs(parsed.query, keep_blank_values=True)
+        keys = {k.lower() for k in qs}
+        if "api_key" in keys or "apikey" in keys:
+            return url
+        q = dict(qs)
+        # flatten single-value lists for urlencode
+        flat = {k: v[0] if len(v) == 1 else v for k, v in q.items()}
+        flat["api_key"] = token
+        return urlunparse(parsed._replace(query=urlencode(flat, doseq=True)))
+
     # -- auth ----------------------------------------------------------------
 
     def authenticate(self, username: str, password: str) -> None:
         data = {"Username": username, "Pw": password}
         resp = self._post("/Users/AuthenticateByName", data)
         body = resp.json()
-        self.access_token = body["AccessToken"]
-        self.user_id = body["User"]["Id"]
+        try:
+            self.access_token = body["AccessToken"]
+            self.user_id = body["User"]["Id"]
+        except (KeyError, TypeError) as exc:
+            raise RuntimeError(
+                "Authentication response missing AccessToken or User.Id"
+            ) from exc
 
     def resolve_user_id(self) -> str:
         if self.user_id:
             return self.user_id
+        # Prefer current user bound to the token / API key
+        try:
+            me = self._get("/Users/Me").json()
+            uid = me.get("Id")
+            if uid:
+                self.user_id = uid
+                return self.user_id
+        except requests.HTTPError:
+            pass
         users = self._get("/Users").json()
         if not users:
             raise RuntimeError("No users found on server")
@@ -121,7 +169,7 @@ class EmbyClient:
             "StartIndex": start,
             "Limit": limit,
             "Recursive": str(recursive).lower(),
-            "Fields": "Path,MediaSources,DateCreated,Size,RunTimeTicks",
+            "Fields": ITEM_FIELDS,
             "SortBy": "SortName",
             "SortOrder": "Ascending",
         }
@@ -152,31 +200,81 @@ class EmbyClient:
 
     def get_item_info(self, item_id: str) -> dict:
         uid = self.resolve_user_id()
-        resp = self._get(f"/Users/{uid}/Items/{item_id}")
+        resp = self._get(
+            f"/Users/{uid}/Items/{item_id}",
+            params={"Fields": ITEM_FIELDS},
+        )
         return resp.json()
 
-    def search_items(self, query: str, item_types: str = "Movie", limit: int = 25) -> list[dict]:
+    def search_items(
+        self,
+        query: str,
+        item_types: str = "Movie",
+        limit: int | None = 25,
+    ) -> list[dict]:
+        """Search items by name.
+
+        *limit* caps how many items to return. ``None`` fetches all pages
+        (Emby ``TotalRecordCount``). Internal callers (resolve) keep the
+        default of 25; the CLI ``search --count`` overrides this.
+        """
         uid = self.resolve_user_id()
-        params = {
-            "SearchTerm": query,
-            "Limit": limit,
-            "Recursive": "true",
-            "Fields": "Path,MediaSources,MediaStreams,Size,RunTimeTicks,ProductionYear",
-            "IncludeItemTypes": item_types,
-        }
-        resp = self._get(f"/Users/{uid}/Items", params=params)
-        return resp.json().get("Items", [])
+        items: list[dict] = []
+        start = 0
+        page_size = 200
+        while True:
+            if limit is not None:
+                remaining = limit - len(items)
+                if remaining <= 0:
+                    break
+                batch = min(page_size, remaining)
+            else:
+                batch = page_size
+            params = {
+                "SearchTerm": query,
+                "StartIndex": start,
+                "Limit": batch,
+                "Recursive": "true",
+                "Fields": ITEM_FIELDS,
+                "IncludeItemTypes": item_types,
+            }
+            resp = self._get(f"/Users/{uid}/Items", params=params)
+            page = resp.json()
+            chunk = page.get("Items", [])
+            items.extend(chunk)
+            total = page.get("TotalRecordCount", len(items))
+            start += len(chunk)
+            if not chunk or start >= total:
+                break
+            if limit is not None and len(items) >= limit:
+                break
+        if limit is not None:
+            return items[:limit]
+        return items
 
     def get_show_episodes(self, series_id: str, season: int | None = None) -> list[dict]:
         uid = self.resolve_user_id()
-        params: dict = {
-            "UserId": uid,
-            "Fields": "Path,MediaSources,MediaStreams,Size,RunTimeTicks,ProductionYear",
-        }
-        if season is not None:
-            params["Season"] = season
-        resp = self._get(f"/Shows/{series_id}/Episodes", params=params)
-        return resp.json().get("Items", [])
+        items: list[dict] = []
+        start = 0
+        batch = 200
+        while True:
+            params: dict = {
+                "UserId": uid,
+                "Fields": ITEM_FIELDS,
+                "StartIndex": start,
+                "Limit": batch,
+            }
+            if season is not None:
+                params["Season"] = season
+            resp = self._get(f"/Shows/{series_id}/Episodes", params=params)
+            page = resp.json()
+            chunk = page.get("Items", [])
+            items.extend(chunk)
+            total = page.get("TotalRecordCount", len(items))
+            start += batch
+            if start >= total or not chunk:
+                break
+        return items
 
     # -- playback ------------------------------------------------------------
 
@@ -197,8 +295,6 @@ class EmbyClient:
         }
         if media_source_id:
             params["MediaSourceId"] = media_source_id
-        # Empty DeviceProfile: let the server decide; Emby Web sends one, but
-        # DirectStreamUrl is still returned without it for compatible files.
         resp = self._request_with_retry(
             "POST",
             f"/Items/{item_id}/PlaybackInfo",
@@ -227,9 +323,8 @@ class EmbyClient:
                     f"(SupportsTranscoding={source.get('SupportsTranscoding')}). "
                     "Try --method download or --method hls."
                 )
-            device_id = _DEVICE_ID
             qs = {
-                "DeviceId": device_id,
+                "DeviceId": _DEVICE_ID,
                 "MediaSourceId": source.get("Id") or media_source_id or item_id,
                 "PlaySessionId": play_session_id
                 or hashlib.md5(f"stream-{item_id}-{time.time()}".encode()).hexdigest(),
@@ -239,13 +334,16 @@ class EmbyClient:
             direct = f"/Videos/{item_id}/original.{container}?{urlencode(qs)}"
 
         if direct.startswith("http"):
-            return direct
-        if not direct.startswith("/"):
-            direct = "/" + direct
-        # PlaybackInfo returns "/videos/..." (no /emby prefix)
-        if direct.lower().startswith("/emby/"):
-            return f"{self.server_url}{direct}"
-        return f"{self.server_url}/emby{direct}"
+            url = direct
+        else:
+            if not direct.startswith("/"):
+                direct = "/" + direct
+            if direct.lower().startswith("/emby/"):
+                url = f"{self.server_url}{direct}"
+            else:
+                url = f"{self.server_url}/emby{direct}"
+
+        return self._ensure_api_key(url, self.access_token)
 
     # -- download ------------------------------------------------------------
 
@@ -256,6 +354,7 @@ class EmbyClient:
         chunk_size: int = DEFAULT_CHUNK,
         resume: bool = True,
         rate_bps: float | None = None,
+        expected_size: int | None = None,
     ) -> Path:
         """Download *url* to *dest_path* with optional resume and rate limit."""
         dest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -272,9 +371,24 @@ class EmbyClient:
             try:
                 resp = self.session.get(url, headers=headers, stream=True, timeout=30)
                 if resp.status_code == 416:
+                    # Range not satisfiable: complete only if size matches expectation
                     if tmp_path.exists():
-                        tmp_path.rename(dest_path)
-                    return dest_path
+                        size = tmp_path.stat().st_size
+                        if expected_size is not None and size == expected_size:
+                            tmp_path.rename(dest_path)
+                            return dest_path
+                        if expected_size is None and size > 0 and dest_path.exists() is False:
+                            # Without Size, treat equal-to-dest or drop corrupt part
+                            pass
+                        print(f"  Resume rejected (416); restarting download "
+                              f"(part={size}, expected={expected_size})")
+                        tmp_path.unlink(missing_ok=True)
+                        existing = 0
+                        headers = dict(self._auth_header())
+                        continue
+                    raise RuntimeError(
+                        f"Server returned 416 with no partial file for {dest_path.name}"
+                    )
                 resp.raise_for_status()
                 break
             except (requests.ConnectionError, requests.Timeout) as exc:
@@ -291,14 +405,14 @@ class EmbyClient:
                 else:
                     raise
 
+        mode = "ab" if existing and resp.status_code == 206 else "wb"
+        if mode == "wb":
+            existing = 0
+
         total = None
         cl = resp.headers.get("Content-Length")
         if cl:
             total = int(cl) + existing
-
-        mode = "ab" if existing and resp.status_code == 206 else "wb"
-        if mode == "wb":
-            existing = 0
 
         if rate_bps:
             chunk_size = min(chunk_size, max(16384, int(rate_bps)))
@@ -338,6 +452,7 @@ class EmbyClient:
         chunk_size: int = DEFAULT_CHUNK,
         resume: bool = True,
         rate_bps: float | None = None,
+        expected_size: int | None = None,
     ) -> Path:
         """Download the original file for *item_id* via /Items/{id}/Download."""
         return self._download_from_url(
@@ -346,6 +461,7 @@ class EmbyClient:
             chunk_size=chunk_size,
             resume=resume,
             rate_bps=rate_bps,
+            expected_size=expected_size,
         )
 
     def download_item_stream(
@@ -355,6 +471,7 @@ class EmbyClient:
         chunk_size: int = DEFAULT_CHUNK,
         resume: bool = True,
         rate_bps: float | None = None,
+        expected_size: int | None = None,
     ) -> Path:
         """Download like Emby Web playback: PlaybackInfo + /videos/{id}/original.*."""
         url = self.resolve_direct_stream_url(item_id)
@@ -364,6 +481,7 @@ class EmbyClient:
             chunk_size=chunk_size,
             resume=resume,
             rate_bps=rate_bps,
+            expected_size=expected_size,
         )
 
     # -- HLS download --------------------------------------------------------
@@ -406,17 +524,15 @@ class EmbyClient:
             raise RuntimeError(f"No media sources for item {item_id}")
         media_source_id = sources[0]["Id"]
 
-        device_id = _DEVICE_ID
         play_session_id = hashlib.md5(
             f"hls-{item_id}-{time.time()}".encode()
         ).hexdigest()
 
+        # Omit VideoCodec/AudioCodec=copy (not valid Emby codec ids); let server decide.
         hls_params: dict = {
-            "DeviceId": device_id,
+            "DeviceId": _DEVICE_ID,
             "MediaSourceId": media_source_id,
             "PlaySessionId": play_session_id,
-            "VideoCodec": "copy",
-            "AudioCodec": "copy",
             "SegmentContainer": "ts",
             "BreakOnNonKeyFrames": "false",
         }
@@ -431,10 +547,9 @@ class EmbyClient:
         if not master.playlists:
             raise RuntimeError("No variant streams in master playlist")
 
-        variant_uri = master.playlists[0].absolute_uri
-        if self.access_token and "api_key" not in variant_uri:
-            sep = "&" if "?" in variant_uri else "?"
-            variant_uri += f"{sep}api_key={self.access_token}"
+        variant_uri = self._ensure_api_key(
+            master.playlists[0].absolute_uri, self.access_token
+        )
 
         tmp_dir = dest_path.parent / f".hls-tmp-{item_id}"
         tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -460,11 +575,7 @@ class EmbyClient:
                         continue
                     seen_uris.add(seg_uri)
 
-                    dl_uri = seg_uri
-                    if self.access_token and "api_key" not in dl_uri:
-                        sep = "&" if "?" in dl_uri else "?"
-                        dl_uri += f"{sep}api_key={self.access_token}"
-
+                    dl_uri = self._ensure_api_key(seg_uri, self.access_token)
                     seg_path = tmp_dir / f"seg_{len(segments):06d}.ts"
                     self._download_segment(dl_uri, seg_path)
                     segments.append(seg_path)

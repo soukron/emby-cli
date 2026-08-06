@@ -26,7 +26,42 @@ def test_download_defaults_output():
     assert args.method == "download"
 
 
+def test_batch_has_pick_best_item():
+    parser = build_parser()
+    args = parser.parse_args([
+        "--server", "http://x", "--api-key", "k",
+        "batch", "-F", "titles.txt", "--pick-best-item", "1",
+    ])
+    assert args.pick_best_item == 1
+
+
+def test_batch_pick_best_default_zero():
+    parser = build_parser()
+    args = parser.parse_args([
+        "--server", "http://x", "--api-key", "k",
+        "batch", "-F", "titles.txt",
+    ])
+    assert args.pick_best_item == 0
+
+
 def test_batch_requires_file():
     parser = build_parser()
     with pytest.raises(SystemExit):
         parser.parse_args(["--server", "http://x", "--api-key", "k", "batch"])
+
+
+def test_search_count_default_none():
+    parser = build_parser()
+    args = parser.parse_args([
+        "--server", "http://x", "--api-key", "k", "search", "matrix",
+    ])
+    assert args.count is None
+
+
+def test_search_count_flag():
+    parser = build_parser()
+    args = parser.parse_args([
+        "--server", "http://x", "--api-key", "k",
+        "search", "matrix", "--count", "50",
+    ])
+    assert args.count == 50

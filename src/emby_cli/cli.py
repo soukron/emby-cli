@@ -22,6 +22,12 @@ from emby_cli.commands.sync import cmd_sync
 from emby_cli.constants import DEFAULT_OUTPUT
 
 
+_FORCE_HELP = (
+    "Re-download even if local file matches remote size "
+    "(or HLS .mkv + .done marker exists)"
+)
+
+
 def build_parser() -> argparse.ArgumentParser:
     env = os.environ.get
 
@@ -44,7 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     dl.add_argument("--item-id", "-i", default=env("EMBY_ITEM_ID"), help="Specific item ID to download (env: EMBY_ITEM_ID)")
     dl.add_argument("--output", "-o", default=env("EMBY_OUTPUT", DEFAULT_OUTPUT),
                     help=f"Output directory (env: EMBY_OUTPUT, default: {DEFAULT_OUTPUT})")
-    dl.add_argument("--force", "-f", action="store_true", help="Re-download even if file exists with matching size")
+    dl.add_argument("--force", "-f", action="store_true", help=_FORCE_HELP)
     dl.add_argument("--throttle", "-t", type=float, nargs="?", const=1.0, default=0,
                     help="Limit speed to playback rate. Optional multiplier: 1=realtime, 1.5=50%% faster (default: off)")
     dl.add_argument("--method", "-m", default=env("EMBY_METHOD", "download"),
@@ -54,6 +60,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     sr = sub.add_parser("search", help="Search for items by name")
     sr.add_argument("query", help="Search query")
+    sr.add_argument(
+        "--count", "-n",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Max results to return (default: all, paginated)",
+    )
 
     pl = sub.add_parser("play", help="Play an item via DirectStreamUrl in an external player")
     pl.add_argument("query", nargs="?",
@@ -66,14 +79,14 @@ def build_parser() -> argparse.ArgumentParser:
     pl.add_argument("--wait", action="store_true",
                     help="Block until the player process exits (default: detach and return)")
     pl.add_argument("--pick-best-item", type=int, choices=[0, 1], default=0,
-                    help="On ambiguous search results: 0=list and require --item-id (default), "
-                         "1=auto-select best ≤1080p like batch")
+                    help="On ambiguous search results: 0=list and fail (default), "
+                         "1=auto-select best ≤1080p")
 
     sy = sub.add_parser("sync", help="Sync all libraries (or one with --library)")
     sy.add_argument("--library", "-l", default=env("EMBY_LIBRARY"), help="Specific library to sync (env: EMBY_LIBRARY)")
     sy.add_argument("--output", "-o", default=env("EMBY_OUTPUT", DEFAULT_OUTPUT),
                     help=f"Output directory (env: EMBY_OUTPUT, default: {DEFAULT_OUTPUT})")
-    sy.add_argument("--force", "-f", action="store_true", help="Re-download even if file exists with matching size")
+    sy.add_argument("--force", "-f", action="store_true", help=_FORCE_HELP)
     sy.add_argument("--throttle", "-t", type=float, nargs="?", const=1.0, default=0,
                     help="Limit speed to playback rate. Optional multiplier: 1=realtime, 1.5=50%% faster (default: off)")
     sy.add_argument("--method", "-m", default=env("EMBY_METHOD", "download"),
@@ -86,13 +99,16 @@ def build_parser() -> argparse.ArgumentParser:
     ba.add_argument("--dry-run", "-n", action="store_true", help="Search and select only, do not download")
     ba.add_argument("--output", "-o", default=env("EMBY_OUTPUT", DEFAULT_OUTPUT),
                     help=f"Output directory (env: EMBY_OUTPUT, default: {DEFAULT_OUTPUT})")
-    ba.add_argument("--force", "-f", action="store_true", help="Re-download even if file exists with matching size")
+    ba.add_argument("--force", "-f", action="store_true", help=_FORCE_HELP)
     ba.add_argument("--throttle", "-t", type=float, nargs="?", const=1.0, default=0,
                     help="Limit speed to playback rate. Optional multiplier: 1=realtime, 1.5=50%% faster (default: off)")
     ba.add_argument("--method", "-m", default=env("EMBY_METHOD", "download"),
                     choices=["download", "stream", "hls"],
                     help="Download method: 'download' (API Download), 'stream' (browser-like original.*), "
                          "or 'hls' (stream chunks + remux) (env: EMBY_METHOD)")
+    ba.add_argument("--pick-best-item", type=int, choices=[0, 1], default=0,
+                    help="On ambiguous search results: 0=fail the line (default), "
+                         "1=auto-select best ≤1080p (also per episode version in a season)")
 
     return p
 

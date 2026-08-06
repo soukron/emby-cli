@@ -7,3 +7,5 @@ RETRY_BACKOFF_BASE = 30  # seconds; doubles each retry: 30, 60, 120, 240, 480
 CLIENT_NAME = "emby-cli"
 DEVICE_NAME = "emby-cli"
 DEFAULT_OUTPUT = "./downloads"
+DOWNLOADABLE_TYPES = ("Movie", "Episode", "Audio", "Video")
+ITEM_FIELDS = "Path,MediaSources,MediaStreams,Size,RunTimeTicks,ProductionYear,DateCreated"

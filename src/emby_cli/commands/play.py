@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 from emby_cli.client import EmbyClient
+from emby_cli.output import print_error
 from emby_cli.resolve import (
     classify_resolution,
     item_video_width,
@@ -95,7 +96,7 @@ def cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
         try:
             item = client.get_item_info(item_id)
         except Exception as exc:
-            print(f"ERROR fetching item {item_id}: {exc}")
+            print_error(f"fetching item {item_id}: {exc}")
             sys.exit(1)
     else:
         pick_best = bool(getattr(args, "pick_best_item", 0))
@@ -107,7 +108,7 @@ def cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
     try:
         player_cmd = find_player(getattr(args, "player", None))
     except RuntimeError as exc:
-        print(f"ERROR: {exc}")
+        print_error(str(exc))
         sys.exit(1)
 
     res = classify_resolution(item_video_width(item))
@@ -116,7 +117,7 @@ def cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
     try:
         url = client.resolve_direct_stream_url(item_id)
     except Exception as exc:
-        print(f"ERROR resolving stream URL: {exc}")
+        print_error(f"resolving stream URL: {exc}")
         sys.exit(1)
 
     print(f"Stream:  {redact_url(url)}")

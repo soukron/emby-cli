@@ -7,40 +7,44 @@ import sys
 from pathlib import Path
 
 from emby_cli.client import EmbyClient
-from emby_cli.download_ops import do_download, should_skip_item
-from emby_cli.util import build_dest_path
+from emby_cli.download_ops import download_library_items, download_one_item
+from emby_cli.output import Stats, print_done, print_error
+
 
 def cmd_download(client: EmbyClient, args: argparse.Namespace) -> None:
     output = Path(args.output)
-    downloadable = ("Movie", "Episode", "Audio", "Video")
-    throttle = getattr(args, "throttle", False)
+    throttle = float(getattr(args, "throttle", 0) or 0)
     method = getattr(args, "method", "download")
+    stats = Stats()
 
     if args.item_id:
         item_ids = [x.strip() for x in args.item_id.split(",") if x.strip()]
         total = len(item_ids)
-        errors = 0
         for idx, iid in enumerate(item_ids, 1):
-            prefix = f"[{idx}/{total}]" if total > 1 else ""
             try:
                 item = client.get_item_info(iid)
             except Exception as exc:
-                print(f"{prefix} ERROR fetching item {iid}: {exc}")
-                errors += 1
+                print_error(f"fetching item {iid}: {exc}", idx=idx, total=total)
+                stats.error += 1
                 continue
-            dest = build_dest_path(item, output)
-            if should_skip_item(item, dest, method, args.force):
-                print(f"{prefix} Skipping (already downloaded): {dest}")
-                continue
-            print(f"{prefix} Downloading ({method}): {item['Name']} -> {dest}")
-            try:
-                do_download(client, iid, item, dest, method, throttle)
-            except Exception as exc:
-                print(f"  ERROR: {exc}")
-                errors += 1
-        if total > 1:
-            print(f"\nDone. Items: {total}, Errors: {errors}")
-        return
+            result = download_one_item(
+                client,
+                item,
+                output,
+                method=method,
+                force=args.force,
+                throttle=throttle,
+                idx=idx if total > 1 else None,
+                total=total if total > 1 else None,
+            )
+            if result == "ok":
+                stats.ok += 1
+            elif result == "skip":
+                stats.skip += 1
+            elif result == "error":
+                stats.error += 1
+        print_done(stats)
+        sys.exit(stats.exit_code())
 
     if not args.library:
         print("Specify --library or --item-id")
@@ -49,29 +53,19 @@ def cmd_download(client: EmbyClient, args: argparse.Namespace) -> None:
     libraries = client.get_libraries()
     lib = next((l for l in libraries if l["Name"].lower() == args.library.lower()), None)
     if not lib:
-        print(f"Library '{args.library}' not found")
+        print(f"Library '{args.library}' not found. Available:")
+        for l in libraries:
+            print(f"  - {l['Name']}")
         sys.exit(1)
 
-    items = client.get_all_items(parent_id=lib["Id"])
-    targets = [i for i in items if i.get("Type") in downloadable]
-
-    print(f"\nFound {len(targets)} items in '{lib['Name']}'")
-    skipped = 0
-    errors = 0
-
-    for idx, item in enumerate(targets, 1):
-        dest = build_dest_path(item, output)
-        if should_skip_item(item, dest, method, args.force):
-            skipped += 1
-            continue
-
-        prefix = f"[{idx}/{len(targets)}]"
-        print(f"\n{prefix} {item['Name']}")
-        try:
-            do_download(client, item["Id"], item, dest, method, throttle)
-        except Exception as exc:
-            print(f"  ERROR: {exc}")
-            errors += 1
-
-    print(f"\nDone. Downloaded: {len(targets) - skipped - errors}, "
-          f"Skipped: {skipped}, Errors: {errors}")
+    stats = download_library_items(
+        client,
+        lib,
+        output,
+        method=method,
+        force=args.force,
+        throttle=throttle,
+        show_section=False,
+    )
+    print_done(stats)
+    sys.exit(stats.exit_code())
