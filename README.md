@@ -11,12 +11,11 @@ CLI to **list, search, play, and download/backup** original media files from an 
 pip install emby-cli
 ```
 
-Development (editable):
+Development (from a clone of this repo):
 
 ```bash
-git clone https://github.com/soukron/emby-cli.git
-cd emby-cli
-make install
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
 ```
 
 ## Configuration
@@ -54,12 +53,12 @@ Download methods (`-m` / `EMBY_METHOD`):
 ## Development
 
 ```bash
-make install          # .venv + editable install
-make test
-make build && make check
-make push             # push current branch
-make release VERSION=0.1.0   # tag + gh release → CI publishes to PyPI
+pip install -e ".[dev]"
+pytest -q
+python -m build && twine check dist/*
 ```
+
+To publish a release, tag `vX.Y.Z` and push it (or create a GitHub Release). CI builds the package and publishes to PyPI via Trusted Publisher.
 
 ## License
 
