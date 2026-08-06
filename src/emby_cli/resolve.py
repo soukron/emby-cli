@@ -1,4 +1,4 @@
-"""Title-line parsing, resolution ranking, and item resolution for play/batch."""
+"""Title-line parsing, resolution ranking, and item resolution for play/download."""
 
 from __future__ import annotations
 
@@ -165,7 +165,7 @@ def _ambiguous(
     *,
     excluded: set[str] | None = None,
     hint: str = (
-        "Use --item-id with an ID from the list above, "
+        "Use --id with an ID from the list above, "
         "or pass --pick-best-item to auto-select."
     ),
 ) -> None:
@@ -209,7 +209,7 @@ def resolve_title_items(
     """Resolve a title line to one or more items (strict).
 
     Returns a list of items to act on, or None on not-found / ambiguity.
-    When *allow_season_all* is True (batch) and the line is ``Sxx`` without
+    When *allow_season_all* is True (download --media-item/--from-file) and the line is ``Sxx`` without
     ``Exx``, returns all episodes in that season (with optional pick_best per
     episode version). When False (play), season-only lines refuse.
     """
@@ -239,7 +239,7 @@ def resolve_title_items(
                 return None
 
         if len(candidates) > 1:
-            print("  Multiple series matches; pick one with --item-id:")
+            print("  Multiple series matches; pick one with --id:")
             _ambiguous(series_results, excluded=excluded)
             return None
 
@@ -257,7 +257,7 @@ def resolve_title_items(
         if episode is None:
             if not allow_season_all:
                 print(f"  Season {season:02d} has {len(episodes)} episode(s); "
-                      "specify SxxExx or --item-id:")
+                      "specify SxxExx or --id:")
                 print_item_choices(episodes)
                 return None
             picked = _pick_episode_versions(episodes, pick_best=pick_best)

@@ -3,7 +3,7 @@
 [PyPI](https://pypi.org/project/emby-cli/)
 [License: CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)
 
-CLI to **list, search, play, and download/backup** original media files from an [Emby](https://emby.media/) server via its REST API. Only HTTP access is required (default port 8096) — no SSH or rsync.
+CLI to **search, play, and download/backup** original media files from an [Emby](https://emby.media/) server via its REST API. Only HTTP access is required (default port 8096) — no SSH or rsync.
 
 ## Install
 
@@ -30,28 +30,39 @@ Set environment variables (or pass CLI flags):
 | `EMBY_OUTPUT` | Download directory (default `./downloads`) |
 | `EMBY_METHOD` | `download`, `stream`, or `hls` |
 | `EMBY_PLAYER` | External player for `play` |
+| `EMBY_ITEM_ID` | Default for `--id` (item mode / play) |
 
 See `.env.example`. The app does not load `.env` itself — `source` it or export vars.
 
 ## Usage
 
 ```bash
+emby-cli help
 emby-cli version
 emby-cli info
-emby-cli list
-emby-cli search "Title"
-emby-cli search "Title" --count 50
-emby-cli download -i <itemId> -o ./downloads
-emby-cli sync -l "Movies"
-emby-cli batch -F titles.txt -n
-emby-cli batch -F titles.txt --pick-best-item
-emby-cli play "Movie (2010)"
-emby-cli play "Show S01E01" --pick-best-item
+emby-cli search --media-item --search "Title"
+emby-cli search --media-item --search "Title" --count 50
+emby-cli search --media-item --id 123456
+emby-cli search --media-item --all
+emby-cli search --library --all
+emby-cli search --library --id 614156
+emby-cli search --library --search "PELICULAS"
+
+emby-cli download --media-item --id 123456
+emby-cli download --media-item --search "californication S01E01" --pick-best-item
+emby-cli download --library --id 12345
+emby-cli download --library --search "PELICULAS 4K"
+emby-cli download --from-file titles.txt --dry-run
+
+emby-cli play --id 123456
+emby-cli play --search "Pelicula (1980)" --pick-best-item
 ```
 
 `info` reports libraries and totals from `GET /Items/Counts` (totals may include multiple versions of the same title).
 
-Title resolution (`play` / `batch`) is **strict** by default (year mismatch or multiple matches fail that line). Pass `--pick-best-item` to auto-select the best ≤1080p version. In `batch`, a season line like `Show S01` downloads the whole season (with the same pick-best rule per episode version).
+Title resolution (`play --search`, `download --media-item --search`, `download --from-file`) is **strict** by default (year mismatch or multiple matches fail). Pass `--pick-best-item` to auto-select the best ≤1080p version. With `--from-file` / `--media-item --search`, a season line like `Show S01` downloads the whole season (same pick-best rule per episode version). Library `--search` requires an exact name match (case-insensitive); no pick-best.
+
+`--dry-run` / `-n` works for all `download` modes (no files written).
 
 Download methods (`-m` / `EMBY_METHOD`):
 

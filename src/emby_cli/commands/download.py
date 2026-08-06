@@ -1,61 +1,159 @@
-"""download command."""
+"""download command — media item, library, or title file."""
 
 from __future__ import annotations
 
 import argparse
+import os
+import re
 import sys
+import time
 from pathlib import Path
 
 from emby_cli.client import EmbyClient
-from emby_cli.download_ops import download_library_items, download_one_item
+from emby_cli.download_ops import (
+    download_library_items,
+    download_one_item,
+    find_library,
+)
 from emby_cli.output import Stats, print_done, print_error
+from emby_cli.resolve import resolve_title_items
+from emby_cli.util import format_duration
 
 
-def cmd_download(client: EmbyClient, args: argparse.Namespace) -> None:
+def _print_available_libraries(libraries: list[dict]) -> None:
+    for lib in libraries:
+        print(f"  - [{lib.get('Id', '?')}] {lib.get('Name', '?')}")
+
+
+def _download_items(
+    client: EmbyClient,
+    items: list[dict],
+    *,
+    output: Path,
+    method: str,
+    force: bool,
+    throttle: float,
+    dry_run: bool,
+) -> Stats:
+    stats = Stats()
+    total = len(items)
+    for idx, item in enumerate(items, 1):
+        result = download_one_item(
+            client,
+            item,
+            output,
+            method=method,
+            force=force,
+            throttle=throttle,
+            idx=idx if total > 1 else None,
+            total=total if total > 1 else None,
+            dry_run=dry_run,
+        )
+        if result == "ok":
+            stats.ok += 1
+        elif result == "skip":
+            stats.skip += 1
+        elif result == "error":
+            stats.error += 1
+    return stats
+
+
+def _cmd_download_item(client: EmbyClient, args: argparse.Namespace) -> None:
     output = Path(args.output)
     throttle = float(getattr(args, "throttle", 0) or 0)
     method = getattr(args, "method", "download")
-    stats = Stats()
+    dry_run = bool(getattr(args, "dry_run", False))
+    pick_best = bool(getattr(args, "pick_best_item", False))
+    search = (getattr(args, "search", None) or "").strip() or None
+    item_id = (getattr(args, "id", None) or "").strip() or None
+    if not item_id and not search:
+        item_id = (os.environ.get("EMBY_ITEM_ID") or "").strip() or None
 
-    if args.item_id:
-        item_ids = [x.strip() for x in args.item_id.split(",") if x.strip()]
+    if bool(item_id) == bool(search):
+        print("With --media-item, provide exactly one of --id or --search")
+        sys.exit(1)
+
+    if dry_run:
+        print("*** DRY RUN — no files will be downloaded ***\n")
+
+    if item_id:
+        item_ids = [x.strip() for x in item_id.split(",") if x.strip()]
+        items: list[dict] = []
+        stats = Stats()
         total = len(item_ids)
         for idx, iid in enumerate(item_ids, 1):
             try:
-                item = client.get_item_info(iid)
+                items.append(client.get_item_info(iid))
             except Exception as exc:
                 print_error(f"fetching item {iid}: {exc}", idx=idx, total=total)
                 stats.error += 1
-                continue
-            result = download_one_item(
+        if items:
+            got = _download_items(
                 client,
-                item,
-                output,
+                items,
+                output=output,
                 method=method,
                 force=args.force,
                 throttle=throttle,
-                idx=idx if total > 1 else None,
-                total=total if total > 1 else None,
+                dry_run=dry_run,
             )
-            if result == "ok":
-                stats.ok += 1
-            elif result == "skip":
-                stats.skip += 1
-            elif result == "error":
-                stats.error += 1
+            stats.ok += got.ok
+            stats.skip += got.skip
+            stats.error += got.error
         print_done(stats)
         sys.exit(stats.exit_code())
 
-    if not args.library:
-        print("Specify --library or --item-id")
+    items = resolve_title_items(
+        client,
+        search,
+        pick_best=pick_best,
+        allow_season_all=True,
+    )
+    if items is None:
         sys.exit(1)
 
+    stats = _download_items(
+        client,
+        items,
+        output=output,
+        method=method,
+        force=args.force,
+        throttle=throttle,
+        dry_run=dry_run,
+    )
+    print_done(stats)
+    sys.exit(stats.exit_code())
+
+
+def _cmd_download_library(client: EmbyClient, args: argparse.Namespace) -> None:
+    output = Path(args.output)
+    throttle = float(getattr(args, "throttle", 0) or 0)
+    method = getattr(args, "method", "download")
+    dry_run = bool(getattr(args, "dry_run", False))
+    library_id = (getattr(args, "id", None) or "").strip() or None
+    search = (getattr(args, "search", None) or "").strip() or None
+
+    if bool(getattr(args, "pick_best_item", False)):
+        print("--pick-best-item cannot be used with --library")
+        sys.exit(1)
+
+    if bool(library_id) == bool(search):
+        print("With --library, provide exactly one of --id or --search")
+        sys.exit(1)
+
+    if dry_run:
+        print("*** DRY RUN — no files will be downloaded ***\n")
+
     libraries = client.get_libraries()
-    lib = next((l for l in libraries if l["Name"].lower() == args.library.lower()), None)
+    if library_id:
+        lib = find_library(libraries, library_id=library_id)
+        label = f"id '{library_id}'"
+    else:
+        lib = find_library(libraries, name=search)
+        label = f"'{search}'"
     if not lib:
-        print(f"Library '{args.library}' not found. Available:")
-        for l in libraries:
-            print(f"  - {l['Name']}")
+        print(f"Library {label} not found. Available:")
+        _print_available_libraries(libraries)
         sys.exit(1)
 
     stats = download_library_items(
@@ -65,7 +163,167 @@ def cmd_download(client: EmbyClient, args: argparse.Namespace) -> None:
         method=method,
         force=args.force,
         throttle=throttle,
-        show_section=False,
+        show_section=True,
+        dry_run=dry_run,
     )
     print_done(stats)
     sys.exit(stats.exit_code())
+
+
+def _cmd_download_from_file(client: EmbyClient, args: argparse.Namespace) -> None:
+    output = Path(args.output)
+    throttle = float(getattr(args, "throttle", 0) or 0)
+    method = getattr(args, "method", "download")
+    dry_run = bool(getattr(args, "dry_run", False))
+    pick_best = bool(getattr(args, "pick_best_item", False))
+
+    if (getattr(args, "id", None) or "").strip() or (getattr(args, "search", None) or "").strip():
+        print("With --from-file, do not pass --id or --search")
+        sys.exit(1)
+
+    if dry_run:
+        print("*** DRY RUN — no files will be downloaded ***\n")
+
+    file_path = Path(args.from_file)
+    lines: list[str] = []
+    with open(file_path) as f:
+        for raw in f:
+            raw = raw.strip()
+            if raw and not raw.startswith("#"):
+                lines.append(raw)
+
+    if not lines:
+        print("No titles found in file.")
+        return
+
+    print(f"Loaded {len(lines)} titles from {file_path}\n")
+
+    line_stats: list[tuple[str, str, float, str]] = []
+    totals = Stats()
+    total_t0 = time.monotonic()
+
+    for idx, raw_line in enumerate(lines, 1):
+        emby_id_match = re.match(r"^embyId=(\S+)$", raw_line.strip(), re.IGNORECASE)
+        line_t0 = time.monotonic()
+
+        if emby_id_match:
+            item_id = emby_id_match.group(1)
+            label = f"embyId={item_id}"
+            print(f"\n[{idx}/{len(lines)}] Direct ID: {item_id}")
+            try:
+                item = client.get_item_info(item_id)
+            except Exception as exc:
+                print_error(str(exc))
+                elapsed = time.monotonic() - line_t0
+                line_stats.append((label, "ERROR", elapsed, str(exc)))
+                totals.error += 1
+                continue
+
+            result = download_one_item(
+                client,
+                item,
+                output,
+                method=method,
+                force=args.force,
+                throttle=throttle,
+                dry_run=dry_run,
+            )
+            elapsed = time.monotonic() - line_t0
+            status_map = {
+                "ok": "OK",
+                "skip": "SKIPPED",
+                "error": "ERROR",
+                "dry_run": "DRY RUN",
+            }
+            status = status_map.get(result, "ERROR")
+            line_stats.append((label, status, elapsed, item.get("Name", "")))
+            if result == "ok":
+                totals.ok += 1
+            elif result == "skip":
+                totals.skip += 1
+            elif result == "error":
+                totals.error += 1
+            continue
+
+        label = raw_line
+        print(f"\n[{idx}/{len(lines)}] {raw_line}")
+        items = resolve_title_items(
+            client,
+            raw_line,
+            pick_best=pick_best,
+            allow_season_all=True,
+        )
+        if items is None:
+            elapsed = time.monotonic() - line_t0
+            line_stats.append((label, "NOT FOUND", elapsed, ""))
+            totals.not_found += 1
+            continue
+
+        line_ok = line_skip = line_err = 0
+        for item in items:
+            result = download_one_item(
+                client,
+                item,
+                output,
+                method=method,
+                force=args.force,
+                throttle=throttle,
+                dry_run=dry_run,
+            )
+            if result == "ok":
+                line_ok += 1
+                totals.ok += 1
+            elif result == "skip":
+                line_skip += 1
+                totals.skip += 1
+            elif result == "error":
+                line_err += 1
+                totals.error += 1
+
+        elapsed = time.monotonic() - line_t0
+        if dry_run:
+            status = "DRY RUN"
+            detail = f"{len(items)} items"
+        elif line_err and line_ok:
+            status = "PARTIAL"
+            detail = f"ok={line_ok} skip={line_skip} error={line_err}"
+        elif line_err:
+            status = "ERROR"
+            detail = f"error={line_err}"
+        elif line_ok:
+            status = "OK"
+            detail = f"{line_ok} items" if len(items) > 1 else ""
+        else:
+            status = "SKIPPED"
+            detail = f"{line_skip} skipped" if line_skip else ""
+
+        line_stats.append((label, status, elapsed, detail))
+
+    totals.elapsed = time.monotonic() - total_t0
+
+    print(f"\n{'=' * 60}")
+    print(f"From-file complete in {format_duration(totals.elapsed)}\n")
+
+    max_label = max((len(s[0]) for s in line_stats), default=10)
+    for label, status, elapsed, detail in line_stats:
+        time_str = format_duration(elapsed) if elapsed > 0 else "-"
+        detail_str = f" ({detail})" if detail else ""
+        dots = "." * (max_label - len(label) + 3)
+        print(f"  {label} {dots} {time_str:<10} {status}{detail_str}")
+
+    print_done(totals, label="From-file")
+    sys.exit(totals.exit_code(fail_on_not_found=True))
+
+
+def cmd_download(client: EmbyClient, args: argparse.Namespace) -> None:
+    if getattr(args, "media_item", False):
+        _cmd_download_item(client, args)
+        return
+    if getattr(args, "library", False):
+        _cmd_download_library(client, args)
+        return
+    if getattr(args, "from_file", None):
+        _cmd_download_from_file(client, args)
+        return
+    print("Specify --media-item, --library, or --from-file")
+    sys.exit(1)

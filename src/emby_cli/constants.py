@@ -11,4 +11,7 @@ CLIENT_NAME = "emby-cli"
 DEVICE_NAME = "emby-cli"
 DEFAULT_OUTPUT = "./downloads"
 DOWNLOADABLE_TYPES = ("Movie", "Episode", "Audio", "Video")
+SEARCH_ITEM_TYPES = "Movie,Episode,Audio,Video"
+# Default --count for search; also the soft cap that triggers --media-item --all refusal.
+SEARCH_COUNT_DEFAULT = 30
 ITEM_FIELDS = "Path,MediaSources,MediaStreams,Size,RunTimeTicks,ProductionYear,DateCreated"

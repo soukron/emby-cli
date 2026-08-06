@@ -82,14 +82,21 @@ def play_url(player_cmd: list[str], url: str, *, wait: bool = False) -> int:
 def redact_url(url: str) -> str:
     return re.sub(r"(api_key=)[^&]+", r"\1***", url, flags=re.I)
 
+
 def cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
     """Resolve DirectStreamUrl and open it in an external player."""
-    item_id = (args.item_id or "").strip() or None
-    query = (args.query or "").strip() or None
+    search = (getattr(args, "search", None) or "").strip() or None
+    item_id = (getattr(args, "id", None) or "").strip() or None
+    if not item_id and not search:
+        item_id = (os.environ.get("EMBY_ITEM_ID") or "").strip() or None
+    pick_best = bool(getattr(args, "pick_best_item", False))
 
-    if not item_id and not query:
-        print("Specify --item-id or a search query "
-              "(e.g. 'Movie (2010)' or 'Show S01E01')")
+    if bool(item_id) == bool(search):
+        print("Provide exactly one of --id or --search")
+        sys.exit(1)
+
+    if item_id and pick_best:
+        print("--pick-best-item can only be used with --search")
         sys.exit(1)
 
     if item_id:
@@ -99,8 +106,7 @@ def cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
             print_error(f"fetching item {item_id}: {exc}")
             sys.exit(1)
     else:
-        pick_best = bool(getattr(args, "pick_best_item", False))
-        item = resolve_title_item(client, query, pick_best=pick_best)
+        item = resolve_title_item(client, search, pick_best=pick_best)
         if item is None:
             sys.exit(1)
         item_id = item["Id"]

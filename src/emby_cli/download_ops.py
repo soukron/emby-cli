@@ -96,6 +96,42 @@ def download_one_item(
         return "error"
 
 
+def find_library(
+    libraries: list[dict],
+    *,
+    library_id: str | None = None,
+    name: str | None = None,
+) -> dict | None:
+    """Resolve one library view by Id (exact or unique prefix) or by unique name.
+
+    Name match is case-insensitive. Zero or multiple matches → None.
+    """
+    if library_id:
+        needle = library_id.strip()
+        exact = [lib for lib in libraries if str(lib.get("Id", "")) == needle]
+        if len(exact) == 1:
+            return exact[0]
+        if not exact and needle:
+            prefixes = [
+                lib for lib in libraries
+                if str(lib.get("Id", "")).lower().startswith(needle.lower())
+            ]
+            if len(prefixes) == 1:
+                return prefixes[0]
+        return None
+
+    if name:
+        matches = [
+            lib for lib in libraries
+            if (lib.get("Name") or "").lower() == name.lower()
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        return None
+
+    return None
+
+
 def download_library_items(
     client: EmbyClient,
     library: dict,
@@ -105,6 +141,7 @@ def download_library_items(
     force: bool,
     throttle: float,
     show_section: bool = True,
+    dry_run: bool = False,
 ) -> Stats:
     """Download all downloadable items in one library view."""
     stats = Stats()
@@ -125,6 +162,7 @@ def download_library_items(
             throttle=throttle,
             idx=idx,
             total=len(targets),
+            dry_run=dry_run,
         )
         if result == "ok":
             stats.ok += 1

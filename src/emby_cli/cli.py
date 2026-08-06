@@ -13,15 +13,13 @@ warnings.filterwarnings("ignore", message="urllib3 v2 only supports OpenSSL")
 import requests
 
 from emby_cli.client import EmbyClient
-from emby_cli.commands.batch import cmd_batch
 from emby_cli.commands.download import cmd_download
+from emby_cli.commands.help import COMMAND_SUMMARIES, cmd_help
 from emby_cli.commands.info import cmd_info
-from emby_cli.commands.list import cmd_list
 from emby_cli.commands.play import cmd_play
 from emby_cli.commands.search import cmd_search
-from emby_cli.commands.sync import cmd_sync
 from emby_cli.commands.version import cmd_version
-from emby_cli.constants import DEFAULT_OUTPUT
+from emby_cli.constants import DEFAULT_OUTPUT, SEARCH_COUNT_DEFAULT
 
 
 _FORCE_HELP = (
@@ -43,81 +41,145 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--password", "-p", default=env("EMBY_PASSWORD"), help="Password (env: EMBY_PASSWORD)")
 
     sub = p.add_subparsers(dest="command", required=True)
+    _help_by_name = dict(COMMAND_SUMMARIES)
 
-    ls = sub.add_parser("list", help="List libraries or items in a library")
-    ls.add_argument("--library", "-l", help="Library name to list items for")
+    sub.add_parser("help", help=_help_by_name["help"])
 
-    dl = sub.add_parser("download", help="Download items")
-    dl.add_argument("--library", "-l", help="Library name to download")
-    dl.add_argument("--item-id", "-i", default=env("EMBY_ITEM_ID"), help="Specific item ID to download (env: EMBY_ITEM_ID)")
-    dl.add_argument("--output", "-o", default=env("EMBY_OUTPUT", DEFAULT_OUTPUT),
-                    help=f"Output directory (env: EMBY_OUTPUT, default: {DEFAULT_OUTPUT})")
-    dl.add_argument("--force", "-f", action="store_true", help=_FORCE_HELP)
-    dl.add_argument("--throttle", "-t", type=float, nargs="?", const=1.0, default=0,
-                    help="Limit speed to playback rate. Optional multiplier: 1=realtime, 1.5=50%% faster (default: off)")
-    dl.add_argument("--method", "-m", default=env("EMBY_METHOD", "download"),
-                    choices=["download", "stream", "hls"],
-                    help="Download method: 'download' (API Download), 'stream' (browser-like original.*), "
-                         "or 'hls' (stream chunks + remux) (env: EMBY_METHOD)")
-
-    sr = sub.add_parser("search", help="Search for items by name")
-    sr.add_argument("query", help="Search query")
-    sr.add_argument(
-        "--count", "-n",
-        type=int,
+    dl = sub.add_parser(
+        "download",
+        help=_help_by_name["download"],
+    )
+    mode = dl.add_mutually_exclusive_group(required=True)
+    mode.add_argument(
+        "--media-item",
+        action="store_true",
+        help="Download media item(s); use with --id or --search",
+    )
+    mode.add_argument(
+        "--library",
+        action="store_true",
+        help="Download a whole library; use with --id or --search",
+    )
+    mode.add_argument(
+        "--from-file",
+        "-F",
+        metavar="PATH",
+        dest="from_file",
+        help="Download titles listed in a text file (one per line)",
+    )
+    dl.add_argument(
+        "--id",
         default=None,
+        help="Media item or library ID (env: EMBY_ITEM_ID as default in --media-item / play)",
+    )
+    dl.add_argument(
+        "--search",
+        help="Title line (media-item mode) or library name (library mode)",
+    )
+    dl.add_argument(
+        "--dry-run",
+        "-n",
+        action="store_true",
+        help="Resolve / list only; do not download files",
+    )
+    dl.add_argument(
+        "--pick-best-item",
+        action="store_true",
+        help="On ambiguous media-item search results, auto-select best ≤1080p "
+             "(--media-item --search and --from-file; default: fail)",
+    )
+    dl.add_argument(
+        "--output",
+        "-o",
+        default=env("EMBY_OUTPUT", DEFAULT_OUTPUT),
+        help=f"Output directory (env: EMBY_OUTPUT, default: {DEFAULT_OUTPUT})",
+    )
+    dl.add_argument("--force", "-f", action="store_true", help=_FORCE_HELP)
+    dl.add_argument(
+        "--throttle",
+        "-t",
+        type=float,
+        nargs="?",
+        const=1.0,
+        default=0,
+        help="Limit speed to playback rate. Optional multiplier: "
+             "1=realtime, 1.5=50%% faster (default: off)",
+    )
+    dl.add_argument(
+        "--method",
+        "-m",
+        default=env("EMBY_METHOD", "download"),
+        choices=["download", "stream", "hls"],
+        help="Download method: 'download' (API Download), 'stream' "
+             "(browser-like original.*), or 'hls' (stream chunks + remux) "
+             "(env: EMBY_METHOD)",
+    )
+
+    sr = sub.add_parser("search", help=_help_by_name["search"])
+    sr_mode = sr.add_mutually_exclusive_group(required=True)
+    sr_mode.add_argument(
+        "--media-item",
+        action="store_true",
+        help="Search media items; use with --id, --search, or --all",
+    )
+    sr_mode.add_argument(
+        "--library",
+        action="store_true",
+        help="Search libraries; use with --id, --search, or --all",
+    )
+    sr.add_argument(
+        "--id",
+        default=None,
+        help="Media item or library ID",
+    )
+    sr.add_argument(
+        "--search",
+        help="Search query for media item or library",
+    )
+    sr.add_argument(
+        "--all",
+        action="store_true",
+        help="List all media items or libraries",
+    )
+    sr.add_argument(
+        "--count",
+        "-n",
+        type=int,
+        default=SEARCH_COUNT_DEFAULT,
         metavar="N",
-        help="Max results to return (default: all, paginated)",
+        help=f"Max media item results (default: {SEARCH_COUNT_DEFAULT})",
     )
 
-    pl = sub.add_parser("play", help="Play an item via DirectStreamUrl in an external player")
-    pl.add_argument("query", nargs="?",
-                    help="Title line like batch: 'Movie (2010)' or 'Show (2000) S01E01'")
-    pl.add_argument("--item-id", "-i", default=env("EMBY_ITEM_ID"),
-                    help="Item ID to play (env: EMBY_ITEM_ID)")
-    pl.add_argument("--player", default=env("EMBY_PLAYER"),
-                    help="External player command or path (env: EMBY_PLAYER), e.g. vlc or "
-                         "/Applications/VLC.app/Contents/MacOS/VLC")
-    pl.add_argument("--wait", action="store_true",
-                    help="Block until the player process exits (default: detach and return)")
-    pl.add_argument("--pick-best-item", action="store_true",
-                    help="On ambiguous search results, auto-select best ≤1080p "
-                         "(default: list matches and fail)")
-
-    sy = sub.add_parser("sync", help="Sync all libraries (or one with --library)")
-    sy.add_argument("--library", "-l", default=env("EMBY_LIBRARY"), help="Specific library to sync (env: EMBY_LIBRARY)")
-    sy.add_argument("--output", "-o", default=env("EMBY_OUTPUT", DEFAULT_OUTPUT),
-                    help=f"Output directory (env: EMBY_OUTPUT, default: {DEFAULT_OUTPUT})")
-    sy.add_argument("--force", "-f", action="store_true", help=_FORCE_HELP)
-    sy.add_argument("--throttle", "-t", type=float, nargs="?", const=1.0, default=0,
-                    help="Limit speed to playback rate. Optional multiplier: 1=realtime, 1.5=50%% faster (default: off)")
-    sy.add_argument("--method", "-m", default=env("EMBY_METHOD", "download"),
-                    choices=["download", "stream", "hls"],
-                    help="Download method: 'download' (API Download), 'stream' (browser-like original.*), "
-                         "or 'hls' (stream chunks + remux) (env: EMBY_METHOD)")
-
-    ba = sub.add_parser("batch", help="Download titles from a text file (movies, seasons, episodes)")
-    ba.add_argument("--file", "-F", required=True, help="Text file with one title per line")
-    ba.add_argument("--dry-run", "-n", action="store_true", help="Search and select only, do not download")
-    ba.add_argument("--output", "-o", default=env("EMBY_OUTPUT", DEFAULT_OUTPUT),
-                    help=f"Output directory (env: EMBY_OUTPUT, default: {DEFAULT_OUTPUT})")
-    ba.add_argument("--force", "-f", action="store_true", help=_FORCE_HELP)
-    ba.add_argument("--throttle", "-t", type=float, nargs="?", const=1.0, default=0,
-                    help="Limit speed to playback rate. Optional multiplier: 1=realtime, 1.5=50%% faster (default: off)")
-    ba.add_argument("--method", "-m", default=env("EMBY_METHOD", "download"),
-                    choices=["download", "stream", "hls"],
-                    help="Download method: 'download' (API Download), 'stream' (browser-like original.*), "
-                         "or 'hls' (stream chunks + remux) (env: EMBY_METHOD)")
-    ba.add_argument("--pick-best-item", action="store_true",
-                    help="On ambiguous search results, auto-select best ≤1080p "
-                         "(also per episode version in a season; default: fail the line)")
-
-    sub.add_parser("version", help="Show emby-cli version (and Emby server version if credentials work)")
-    sub.add_parser(
-        "info",
-        help="Show session user, server details, libraries, and item counts "
-             "(via /Items/Counts; versions may inflate totals)",
+    pl = sub.add_parser("play", help=_help_by_name["play"])
+    pl.add_argument(
+        "--id",
+        default=None,
+        help="Media item ID to play",
     )
+    pl.add_argument(
+        "--search",
+        help="Title line: 'Movie (2010)' or 'Show (2000) S01E01'. Allows partial matches.",
+    )
+    pl.add_argument(
+        "--player",
+        default=env("EMBY_PLAYER"),
+        help="External player command or path (env: EMBY_PLAYER), e.g. vlc or "
+             "/Applications/VLC.app/Contents/MacOS/VLC",
+    )
+    pl.add_argument(
+        "--wait",
+        action="store_true",
+        help="Block until the player process exits (default: detach and return)",
+    )
+    pl.add_argument(
+        "--pick-best-item",
+        action="store_true",
+        help="On ambiguous search results, auto-select best ≤1080p "
+             "(default: list matches and fail)",
+    )
+
+    sub.add_parser("version", help=_help_by_name["version"])
+    sub.add_parser("info", help=_help_by_name["info"])
 
     return p
 
@@ -125,6 +187,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
+
+    if args.command == "help":
+        cmd_help()
+        return
 
     if args.command == "version":
         cmd_version(args)
@@ -153,12 +219,9 @@ def main() -> None:
         print("OK\n")
 
     commands = {
-        "list": cmd_list,
         "download": cmd_download,
         "search": cmd_search,
         "play": cmd_play,
-        "sync": cmd_sync,
-        "batch": cmd_batch,
     }
     commands[args.command](client, args)
 

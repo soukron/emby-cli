@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Known issue (not fixed yet): `search`/`download`/`play` authenticate before validating required selectors (`--id`/`--search`/`--all`); see ops `AGENTS.md` → Deuda.
+
+## 0.3.0
+
+Breaking:
+
+- Removed `batch`, `sync`, and `list` subcommands (`search --library --all` lists all libraries).
+- `download` uses modes: `--media-item`, `--library`, or `--from-file` / `-F`, plus selectors `--id` or `--search`.
+- `play` uses `--id` or `--search` (no positional query; `--item-id` removed).
+- `search` uses `--media-item` / `--library` plus exactly one of `--id`, `--search`, or `--all`.
+- `search --count` / `-n` defaults to 30 for both `--media-item` and `--library`.
+- `search --media-item --all` probes `TotalRecordCount` and refuses if more than `--count` items (asks to use `--search`).
+- `--dry-run` / `-n` works for all `download` modes.
+- `--pick-best-item` for item title resolution (`download --media-item --search`, `--from-file`, `play --search`); not with `--library`.
+- `help`: list available commands with a short summary (no server required).
+
 ## 0.2.2
 
 - `version`: show emby-cli version; with valid server credentials also show Emby `/System/Info` version.
