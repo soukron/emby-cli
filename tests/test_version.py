@@ -70,9 +70,6 @@ def test_probe_session_falls_back_to_public_system_info():
     client.user_id = "u1"
     me = MagicMock()
     me.json.return_value = {"Name": "u", "Id": "u1"}
-    forbidden = MagicMock()
-    forbidden.raise_for_status.side_effect = requests.HTTPError("403")
-    # _request_with_retry raises HTTPError from raise_for_status
     public = MagicMock()
     public.json.return_value = {"ServerName": "home", "Version": "4.8.0"}
 
@@ -80,9 +77,7 @@ def test_probe_session_falls_back_to_public_system_info():
         if path == "/Users/Me":
             return me
         if path == "/System/Info":
-            exc = requests.HTTPError("403")
-            exc.response = MagicMock(status_code=403)
-            raise exc
+            raise requests.HTTPError("403")
         if path == "/System/Info/Public":
             return public
         raise AssertionError(path)
@@ -92,3 +87,41 @@ def test_probe_session_falls_back_to_public_system_info():
     assert user["Name"] == "u"
     assert info["ServerName"] == "home"
     assert info["Version"] == "4.8.0"
+
+
+def test_probe_session_uses_auth_user_skips_users_me():
+    client = EmbyClient("http://host:8096")
+    auth_user = {"Name": "u", "Id": "abcd" * 8}
+
+    def fake_get(path, **kwargs):
+        if path == "/Users/Me":
+            raise AssertionError("/Users/Me should not be called after auth")
+        if path == "/System/Info":
+            resp = MagicMock()
+            resp.json.return_value = {"ServerName": "home", "Version": "4.8"}
+            return resp
+        raise AssertionError(path)
+
+    with patch.object(client, "authenticate", return_value=auth_user) as auth:
+        with patch.object(client, "_get", side_effect=fake_get):
+            user, info = client.probe_session(username="u", password="p")
+    auth.assert_called_once()
+    assert user is auth_user
+    assert info["ServerName"] == "home"
+
+
+def test_get_current_user_falls_back_to_users_id():
+    client = EmbyClient("http://host:8096", api_key="k")
+    client.user_id = "uid-1"
+    by_id = MagicMock()
+    by_id.json.return_value = {"Name": "u", "Id": "uid-1"}
+
+    def fake_get(path, **kwargs):
+        if path == "/Users/Me":
+            raise requests.HTTPError("500 Guid")
+        if path == "/Users/uid-1":
+            return by_id
+        raise AssertionError(path)
+
+    with patch.object(client, "_get", side_effect=fake_get):
+        assert client.get_current_user()["Name"] == "u"

@@ -8,6 +8,7 @@
 - `info` / `version` probe the server once (no retries); on failure show configured user/URL and mark server name/version as not validated.
 - Note: `/Items/Counts` may count multiple versions of the same title higher than UI “items” views.
 - `probe_session`: fall back to `/System/Info/Public` when full `/System/Info` is forbidden (non-admin users); still proceed with Views/Counts.
+- Avoid broken `/Users/Me` on some Emby servers (HTTP 500 Guid format): use `User` from authenticate or `/Users/{id}`.
 
 ## 0.2.0
 

@@ -65,11 +65,12 @@ def cmd_info(args: argparse.Namespace) -> None:
             username=args.username if args.username is not None else None,
             password=args.password if args.password is not None else "",
         )
-    except (requests.RequestException, RuntimeError, ValueError, KeyError, TypeError):
+    except (requests.RequestException, RuntimeError, ValueError, KeyError, TypeError) as exc:
         user_name = configured_user or "unknown"
         print(f"user: {user_name}")
         print(f"url: {client.server_url}")
         print("server: not validated (name and version unavailable)")
+        print(f"detail: {exc}", file=sys.stderr)
         return
 
     user_name = user.get("Name") or configured_user or user.get("Id") or "unknown"

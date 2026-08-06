@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
 import requests
 
@@ -24,8 +25,9 @@ def cmd_version(args: argparse.Namespace) -> None:
             username=args.username if args.username is not None else None,
             password=args.password if args.password is not None else "",
         )
-    except (requests.RequestException, RuntimeError, ValueError, KeyError, TypeError):
+    except (requests.RequestException, RuntimeError, ValueError, KeyError, TypeError) as exc:
         print("server: not validated (name and version unavailable)")
+        print(f"detail: {exc}", file=sys.stderr)
         return
 
     name = info.get("ServerName") or info.get("Id") or "Emby"

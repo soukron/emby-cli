@@ -150,7 +150,8 @@ class EmbyClient:
         *,
         timeout: float | None = None,
         retries: int | None = None,
-    ) -> None:
+    ) -> dict:
+        """Authenticate by name. Returns the Emby ``User`` object from the response."""
         data = {"Username": username, "Pw": password}
         kwargs: dict = {}
         if timeout is not None:
@@ -161,18 +162,20 @@ class EmbyClient:
         body = resp.json()
         try:
             self.access_token = body["AccessToken"]
-            self.user_id = body["User"]["Id"]
+            user = body["User"]
+            self.user_id = user["Id"]
         except (KeyError, TypeError) as exc:
             raise RuntimeError(
                 "Authentication response missing AccessToken or User.Id"
             ) from exc
+        return user
 
     def resolve_user_id(self) -> str:
         if self.user_id:
             return self.user_id
         # Prefer current user bound to the token / API key
         try:
-            me = self._get("/Users/Me").json()
+            me = self.get_current_user()
             uid = me.get("Id")
             if uid:
                 self.user_id = uid
@@ -226,13 +229,29 @@ class EmbyClient:
         timeout: float | None = None,
         retries: int | None = None,
     ) -> dict:
-        """Current user for the API key / session (``GET /Users/Me``)."""
+        """Current user (``GET /Users/Me``, with fallbacks).
+
+        Some Emby builds return HTTP 500 on ``/Users/Me`` ("Guid should
+        contain…dashes"). Fall back to ``/Users/{user_id}`` when known, else
+        the first entry from ``GET /Users``.
+        """
         kwargs: dict = {}
         if timeout is not None:
             kwargs["timeout"] = timeout
         if retries is not None:
             kwargs["retries"] = retries
-        return self._get("/Users/Me", **kwargs).json()
+        try:
+            return self._get("/Users/Me", **kwargs).json()
+        except requests.HTTPError:
+            pass
+        uid = self.user_id
+        if not uid:
+            users = self._get("/Users", **kwargs).json()
+            if not users:
+                raise RuntimeError("No users found on server")
+            uid = users[0]["Id"]
+            self.user_id = uid
+        return self._get(f"/Users/{uid}", **kwargs).json()
 
     def probe_session(
         self,
@@ -240,16 +259,20 @@ class EmbyClient:
         username: str | None = None,
         password: str = "",
     ) -> tuple[dict, dict]:
-        """One-shot auth + ``/Users/Me`` + system info (no retries).
+        """One-shot auth + current user + system info (no retries).
 
-        Tries ``/System/Info`` first; on HTTP error falls back to
-        ``/System/Info/Public`` (typical for non-admin users). If both
-        fail, returns an empty info dict so callers can still use the user.
+        Uses the ``User`` from ``AuthenticateByName`` when logging in by name
+        (avoids broken ``/Users/Me`` on some servers). Tries ``/System/Info``
+        then ``/System/Info/Public``.
         """
         kwargs = {"timeout": INFO_TIMEOUT, "retries": INFO_RETRIES}
+        user: dict | None = None
         if username is not None:
-            self.authenticate(username, password, **kwargs)
-        user = self.get_current_user(**kwargs)
+            user = self.authenticate(username, password, **kwargs)
+        if user is None:
+            user = self.get_current_user(**kwargs)
+        elif not user.get("Id") and self.user_id:
+            user = self.get_current_user(**kwargs)
         try:
             info = self.get_system_info(**kwargs)
         except requests.HTTPError:
