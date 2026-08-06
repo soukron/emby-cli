@@ -22,10 +22,7 @@ from emby_cli.commands.version import cmd_version
 from emby_cli.constants import DEFAULT_OUTPUT, SEARCH_COUNT_DEFAULT
 
 
-_FORCE_HELP = (
-    "Re-download even if local file matches remote size "
-    "(or HLS .mkv + .done marker exists)"
-)
+_FORCE_HELP = "Re-download even if local file already matches"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -53,40 +50,40 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument(
         "--media-item",
         action="store_true",
-        help="Download media item(s); use with --id or --search",
+        help="Download media items; use with --id or --search",
     )
     mode.add_argument(
         "--library",
         action="store_true",
-        help="Download a whole library; use with --id or --search",
+        help="Download a library; use with --id or --search",
     )
     mode.add_argument(
         "--from-file",
         "-F",
         metavar="PATH",
         dest="from_file",
-        help="Download titles listed in a text file (one per line)",
+        help="Download titles from a text file (one per line)",
     )
     dl.add_argument(
         "--id",
         default=None,
-        help="Media item or library ID (env: EMBY_ITEM_ID as default in --media-item / play)",
+        help="Media item or library ID",
     )
     dl.add_argument(
         "--search",
-        help="Title line (media-item mode) or library name (library mode)",
+        help="Search query for media item or library",
     )
     dl.add_argument(
         "--dry-run",
         "-n",
         action="store_true",
-        help="Resolve / list only; do not download files",
+        help="Resolve only; do not download",
     )
     dl.add_argument(
         "--pick-best-item",
         action="store_true",
-        help="On ambiguous media-item search results, auto-select best ≤1080p "
-             "(--media-item --search and --from-file; default: fail)",
+        help="On ambiguous search results, auto-select best ≤1080p "
+             "(default: list matches and fail)",
     )
     dl.add_argument(
         "--output",
@@ -102,17 +99,14 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="?",
         const=1.0,
         default=0,
-        help="Limit speed to playback rate. Optional multiplier: "
-             "1=realtime, 1.5=50%% faster (default: off)",
+        help="Limit speed to playback rate (optional multiplier; default: off)",
     )
     dl.add_argument(
         "--method",
         "-m",
         default=env("EMBY_METHOD", "download"),
         choices=["download", "stream", "hls"],
-        help="Download method: 'download' (API Download), 'stream' "
-             "(browser-like original.*), or 'hls' (stream chunks + remux) "
-             "(env: EMBY_METHOD)",
+        help="download, stream, or hls (env: EMBY_METHOD)",
     )
 
     sr = sub.add_parser("search", help=_help_by_name["search"])
