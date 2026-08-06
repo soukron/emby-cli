@@ -43,6 +43,7 @@ With username/password, the AccessToken from Emby is cached on disk (never the p
 ```bash
 emby-cli help
 emby-cli login
+emby-cli logout
 emby-cli version
 emby-cli info
 emby-cli search --media-item --search "Title"

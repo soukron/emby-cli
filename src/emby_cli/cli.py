@@ -17,6 +17,7 @@ from emby_cli.commands.download import cmd_download, validate_download_args
 from emby_cli.commands.help import COMMAND_SUMMARIES, cmd_help
 from emby_cli.commands.info import cmd_info
 from emby_cli.commands.login import cmd_login
+from emby_cli.commands.logout import cmd_logout
 from emby_cli.commands.play import cmd_play, validate_play_args
 from emby_cli.commands.search import cmd_search, validate_search_args
 from emby_cli.commands.version import cmd_version
@@ -48,6 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("help", help=_help_by_name["help"])
     sub.add_parser("login", help=_help_by_name["login"])
+    sub.add_parser("logout", help=_help_by_name["logout"])
 
     dl = sub.add_parser(
         "download",
@@ -235,6 +237,10 @@ def main() -> None:
 
     if args.command == "login":
         cmd_login(args)
+        return
+
+    if args.command == "logout":
+        cmd_logout(args)
         return
 
     if args.command == "version":

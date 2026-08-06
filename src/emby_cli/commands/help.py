@@ -6,6 +6,7 @@ from __future__ import annotations
 COMMAND_SUMMARIES: tuple[tuple[str, str], ...] = (
     ("help", "List available commands"),
     ("login", "Authenticate and cache an AccessToken"),
+    ("logout", "Revoke cached AccessToken and delete local session"),
     ("version", "Show emby-cli version"),
     ("info", "Show session user, server details, libraries, and item counts"),
     ("search", "Search media items or libraries"),

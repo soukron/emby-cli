@@ -281,6 +281,22 @@ class EmbyClient:
         self.authenticate(self._username, self._password)
         return True
 
+    def logout_session(self) -> None:
+        """Revoke the current AccessToken via ``POST /Sessions/Logout``.
+
+        Raises on network/HTTP errors other than already-unauthorized.
+        Does not clear the on-disk cache — callers should do that.
+        """
+        if not self.access_token:
+            raise RuntimeError("No access token to revoke")
+        try:
+            self._post("/Sessions/Logout", retries=1)
+        except requests.HTTPError as exc:
+            resp = getattr(exc, "response", None)
+            if resp is not None and resp.status_code in (401, 403):
+                return
+            raise
+
     def resolve_user_id(self) -> str:
         if self.user_id:
             return self.user_id

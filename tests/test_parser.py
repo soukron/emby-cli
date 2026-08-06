@@ -11,7 +11,7 @@ def test_build_parser_subcommands():
     parser = build_parser()
     subs = parser._subparsers._group_actions[0].choices
     assert set(subs) == {
-        "help", "login", "download", "search", "play", "version", "info",
+        "help", "login", "logout", "download", "search", "play", "version", "info",
     }
 
 
