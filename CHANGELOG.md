@@ -2,17 +2,6 @@
 
 ## Unreleased
 
-- Credential store is a single kubeconfig-style `auth.json` (`contexts` + `current_context`); legacy `*.cache` files are migrated on first use.
-- `emby-cli config`: `current-server`, `get-servers`, `use-server`, `view` (tokens redacted).
-- Without `--server` / `EMBY_SERVER`, operational commands use the **active context** server.
-- Validate `search` / `download` / `play` selectors before authenticating (fail fast without touching the server).
-- `logout`: `POST /Sessions/Logout` when possible, always remove the context from `auth.json`.
-- `info`: output grouped under Connection / Server / Content sections; libraries shown as count only.
-- Auth by username: no longer prints `Authenticating…` / `OK` on success (failures still go to stderr).
-- AccessToken cache on disk for username/password auth (`EMBY_CACHE_DIR`, `EMBY_NO_AUTH_CACHE=1`); never stores the password.
-- `login`: interactive (or env/flags) AuthenticateByName, upsert context, and set it active.
-- Operational commands: reuse cached token; if miss but env/CLI credentials exist, login transparently; on HTTP 401, clear cache and re-auth once when password is known.
-
 ## 0.3.0
 
 Breaking:
@@ -26,6 +15,16 @@ Breaking:
 - `--dry-run` / `-n` works for all `download` modes.
 - `--pick-best-item` for item title resolution (`download --media-item --search`, `--from-file`, `play --search`); not with `--library`.
 - `help`: list available commands with a short summary (no server required).
+
+Added:
+
+- Credential store: single kubeconfig-style `auth.json` (`contexts` + `current_context`); legacy `*.cache` migrated on first use.
+- `login` / `logout` (logout calls `POST /Sessions/Logout` when possible and always clears the local context).
+- `emby-cli config`: `current-server`, `get-servers`, `use-server`, `view` (tokens redacted).
+- Without `--server` / `EMBY_SERVER`, operational commands use the active context server.
+- Selectors for `search` / `download` / `play` validated before authenticating.
+- `info`: Connection / Server / Content sections; libraries shown as count only.
+- Silent username auth (no `Authenticating…` / `OK`); transparent re-login on HTTP 401 when password is known.
 
 ## 0.2.2
 
