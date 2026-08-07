@@ -28,11 +28,11 @@ Your session is saved locally. Later commands reuse it, so you usually do not ne
 emby-cli info
 ```
 
-**3. Search and download:**
+**3. Search and play:**
 
 ```bash
 emby-cli search --item "matrix"
-emby-cli download --item "matrix (1999)" --pick-best-item
+emby-cli play --item "matrix (1999)" --pick-best-item
 ```
 
 Use `emby-cli help` for the command list, and `emby-cli <command> -h` for options.
