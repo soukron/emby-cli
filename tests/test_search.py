@@ -24,10 +24,10 @@ def test_item_all_refuses_when_too_many(capsys):
     with pytest.raises(SystemExit) as exc:
         search_mod.cmd_search(client, args)
     assert exc.value.code == 1
-    out = capsys.readouterr().out
-    assert f"There are {SEARCH_COUNT_DEFAULT + 1} media items on this server." in out
-    assert "Please narrow the results with a query" in out
-    assert 'emby-cli search --item "title"' in out
+    err = capsys.readouterr().err
+    assert f"There are {SEARCH_COUNT_DEFAULT + 1} media items on this server." in err
+    assert "Please narrow the results with a query" in err
+    assert 'emby-cli search --item "title"' in err
     client.get_all_items.assert_not_called()
 
 

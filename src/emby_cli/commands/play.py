@@ -125,7 +125,7 @@ def cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
     """Resolve DirectStreamUrl and open it in an external player."""
     err = validate_play_args(args)
     if err:
-        print(err)
+        print(err, file=sys.stderr)
         sys.exit(1)
 
     query, _ = resolve_query(args)

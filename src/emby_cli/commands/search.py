@@ -69,10 +69,7 @@ def validate_search_args(args: argparse.Namespace) -> str | None:
 def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
     err = validate_search_args(args)
     if err:
-        if err.startswith("error:"):
-            print(err, file=sys.stderr)
-        else:
-            print(err)
+        print(err, file=sys.stderr)
         sys.exit(1)
 
     raw_count = getattr(args, "count", SEARCH_COUNT_DEFAULT)
@@ -107,7 +104,8 @@ def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
             print(
                 f"There are {total} media items on this server. "
                 "Please narrow the results with a query, for example:\n"
-                '  emby-cli search --item "title"'
+                '  emby-cli search --item "title"',
+                file=sys.stderr,
             )
             sys.exit(1)
         if total == 0:

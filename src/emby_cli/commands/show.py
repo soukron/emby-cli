@@ -208,7 +208,7 @@ def _cmd_show_library(client: EmbyClient, args: argparse.Namespace) -> None:
 def cmd_show(client: EmbyClient, args: argparse.Namespace) -> None:
     err = validate_show_args(args)
     if err:
-        print(err)
+        print(err, file=sys.stderr)
         sys.exit(1)
 
     if mode_is_library(args):

@@ -339,10 +339,7 @@ def main() -> None:
 
     err = _validate_command_args(args.command, args)
     if err:
-        if err.startswith("error:"):
-            print(err, file=sys.stderr)
-        else:
-            print(err)
+        print(err, file=sys.stderr)
         sys.exit(1)
 
     client = _open_client(args)

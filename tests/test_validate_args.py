@@ -196,8 +196,8 @@ def test_main_search_library_without_selector_skips_auth(capsys, monkeypatch):
             main()
     assert exc.value.code == 1
     open_client.assert_not_called()
-    out = capsys.readouterr().out
-    assert "Provide exactly one of QUERY on --item/--library" in out
+    err = capsys.readouterr().err
+    assert "Provide exactly one of QUERY on --item/--library" in err
 
 
 def test_main_download_library_without_selector_skips_auth(capsys, monkeypatch):
@@ -217,7 +217,7 @@ def test_main_download_library_without_selector_skips_auth(capsys, monkeypatch):
     assert exc.value.code == 1
     open_client.assert_not_called()
     assert "With --library, provide exactly one of --id or QUERY/--search" in (
-        capsys.readouterr().out
+        capsys.readouterr().err
     )
 
 
@@ -233,5 +233,5 @@ def test_main_play_without_selector_skips_auth(capsys, monkeypatch):
     assert exc.value.code == 1
     open_client.assert_not_called()
     assert "Provide exactly one of --id or QUERY/--search" in (
-        capsys.readouterr().out
+        capsys.readouterr().err
     )

@@ -60,6 +60,6 @@ def test_play_csv_continues_after_fetch_error(capsys):
                 play_mod.cmd_play(client, args)
     assert exc.value.code == 1
     assert play_url.call_count == 1
-    err_out = capsys.readouterr().out
-    assert "fetching item bad" in err_out
-    assert "Playing: Ok" in err_out
+    captured = capsys.readouterr()
+    assert "fetching item bad" in captured.err
+    assert "Playing: Ok" in captured.out

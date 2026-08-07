@@ -330,7 +330,7 @@ def _cmd_download_from_file(client: EmbyClient, args: argparse.Namespace) -> Non
 def cmd_download(client: EmbyClient, args: argparse.Namespace) -> None:
     err = validate_download_args(args)
     if err:
-        print(err)
+        print(err, file=sys.stderr)
         sys.exit(1)
 
     if mode_is_item(args):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, field
 
 
@@ -38,7 +39,7 @@ def print_error(
     idx: int | None = None,
     total: int | None = None,
 ) -> None:
-    print(f"{prefix(idx, total)}error: {message}")
+    print(f"{prefix(idx, total)}error: {message}", file=sys.stderr)
 
 
 def print_section(title: str) -> None:
