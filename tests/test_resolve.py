@@ -50,3 +50,21 @@ def test_pick_best_single():
 
 def test_pick_best_empty():
     assert pick_best_item([]) is None
+
+
+def test_pick_best_prefers_720_over_4k():
+    """Prefer non-4K even when no 1080p candidate exists."""
+    items = [
+        {"Id": "4k", "Width": 3840},
+        {"Id": "720", "Width": 1280},
+    ]
+    assert pick_best_item(items)["Id"] == "720"
+
+
+def test_pick_best_all_4k_picks_highest():
+    items = [
+        {"Id": "uhd1", "Width": 3840},
+        {"Id": "uhd2", "Width": 4096},
+    ]
+    assert pick_best_item(items)["Id"] == "uhd2"
+
