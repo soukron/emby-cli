@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- README rewritten for end users (quick start and everyday workflows; contributor notes moved to the end).
+
 ## 0.4.0
 
 Added:
