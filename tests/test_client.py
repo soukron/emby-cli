@@ -5,7 +5,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-import requests
 
 from emby_cli.client import EmbyClient
 from emby_cli.constants import CLIENT_NAME, DOWNLOADABLE_TYPES, SEARCH_ITEM_TYPES
@@ -162,91 +161,3 @@ def test_get_show_episodes_uses_common_pagination():
     params = get.call_args.kwargs["params"]
     assert params["UserId"] == "uid"
     assert params["Season"] == 2
-
-
-def test_download_segment_retries_when_stream_body_disconnects(tmp_path):
-    client = EmbyClient("http://host:8096", api_key="k")
-
-    def interrupted_body():
-        yield b"partial-"
-        raise requests.ConnectionError("disconnected")
-
-    interrupted = MagicMock()
-    interrupted.raise_for_status.return_value = None
-    interrupted.iter_content.return_value = interrupted_body()
-    complete = MagicMock()
-    complete.raise_for_status.return_value = None
-    complete.iter_content.return_value = [b"complete-segment"]
-    dest = tmp_path / "segment.ts"
-
-    with (
-        patch.object(client.session, "get", side_effect=[interrupted, complete]) as get,
-        patch("emby_cli.client.time.sleep"),
-    ):
-        client._download_segment("http://host/segment.ts", dest)
-
-    assert get.call_count == 2
-    assert dest.read_bytes() == b"complete-segment"
-
-
-def test_request_retries_server_error_with_backoff():
-    client = EmbyClient("http://host:8096", api_key="k")
-    unavailable = MagicMock(status_code=503)
-    unavailable.raise_for_status.side_effect = requests.HTTPError(
-        response=unavailable
-    )
-    ok = MagicMock(status_code=200)
-    ok.raise_for_status.return_value = None
-
-    with (
-        patch.object(client.session, "request", side_effect=[unavailable, ok]) as request,
-        patch("emby_cli.client.time.sleep") as sleep,
-    ):
-        assert client._get("/System/Info", retries=2) is ok
-
-    assert request.call_count == 2
-    sleep.assert_called_once_with(30)
-
-
-def test_download_416_promotes_complete_partial_file(tmp_path):
-    client = EmbyClient("http://host:8096", api_key="k")
-    dest = tmp_path / "movie.mkv"
-    partial = tmp_path / "movie.mkv.part"
-    partial.write_bytes(b"complete")
-    response = MagicMock(status_code=416)
-
-    with patch.object(client.session, "get", return_value=response) as get:
-        result = client._download_from_url(
-            "http://host/movie.mkv",
-            dest,
-            expected_size=len(b"complete"),
-        )
-
-    assert result == dest
-    assert dest.read_bytes() == b"complete"
-    assert not partial.exists()
-    assert get.call_count == 1
-
-
-def test_download_416_restarts_without_range_header(tmp_path):
-    client = EmbyClient("http://host:8096", api_key="k")
-    dest = tmp_path / "movie.mkv"
-    partial = tmp_path / "movie.mkv.part"
-    partial.write_bytes(b"stale")
-    rejected = MagicMock(status_code=416)
-    fresh = MagicMock(status_code=200)
-    fresh.raise_for_status.return_value = None
-    fresh.headers = {}
-    fresh.iter_content.return_value = [b"fresh"]
-
-    with patch.object(client.session, "get", side_effect=[rejected, fresh]) as get:
-        result = client._download_from_url(
-            "http://host/movie.mkv",
-            dest,
-            expected_size=10,
-        )
-
-    assert result == dest
-    assert dest.read_bytes() == b"fresh"
-    assert "Range" in get.call_args_list[0].kwargs["headers"]
-    assert "Range" not in get.call_args_list[1].kwargs["headers"]

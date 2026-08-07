@@ -252,7 +252,6 @@ class EmbyClient:
             ) from exc
         self._username = username
         self._password = password
-        self._reauth_attempted = False
         self._persist_auth_cache()
         return user
 
@@ -286,12 +285,14 @@ class EmbyClient:
                 "No cached session; provide --username / EMBY_USERNAME "
                 "or run `emby-cli login`"
             )
-        return self.authenticate(
+        user = self.authenticate(
             username,
             password if password is not None else "",
             timeout=timeout,
             retries=retries,
         )
+        self._reauth_attempted = False
+        return user
 
     def _try_restore_auth_cache(self, username: str | None = None) -> bool:
         if not self.use_auth_cache or self.api_key:
