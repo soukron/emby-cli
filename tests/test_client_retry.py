@@ -224,7 +224,7 @@ class TestHttp401Reauth:
                 ],
             ) as req,
             patch("emby_cli.client.time.sleep") as sleep,
-            patch("emby_cli.client.clear_auth_cache"),
+            patch("emby_cli.client.clear_auth_cache") as clear_cache,
         ):
             result = c._get("/System/Info")
 
@@ -232,6 +232,9 @@ class TestHttp401Reauth:
         assert c.access_token == "new"
         assert req.call_count == 3
         sleep.assert_not_called()
+        clear_cache.assert_called_once_with(
+            server_url="http://host:8096", username="user"
+        )
 
     def test_retry_uses_new_token_in_header(self):
         """After reauth the Authorization header carries the fresh token."""
@@ -644,3 +647,39 @@ class TestDownloadTransientErrors:
         assert dest.read_bytes() == b"data"
         assert get.call_count == 2
         sleep.assert_called_once_with(_backoff(1))
+
+    def test_body_disconnect_does_not_retry(self, tmp_path):
+        """Contract: body consumption is outside _retry_response for normal downloads.
+
+        Unlike HLS segments, a mid-stream ConnectionError propagates and leaves
+        a partial .part file (no automatic retry of the body).
+        """
+        c = _client()
+        dest = tmp_path / "movie.mkv"
+        partial = tmp_path / "movie.mkv.part"
+
+        def interrupted_body():
+            yield b"partial-"
+            raise requests.ConnectionError("disconnected")
+
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.raise_for_status.return_value = None
+        resp.headers = {}
+        resp.iter_content.return_value = interrupted_body()
+
+        with (
+            patch.object(c.session, "get", return_value=resp) as get,
+            patch("emby_cli.client.time.sleep") as sleep,
+            patch("emby_cli.client.tqdm"),
+        ):
+            with pytest.raises(requests.ConnectionError):
+                c._download_from_url(
+                    "http://host/movie.mkv", dest, resume=False
+                )
+
+        assert get.call_count == 1
+        sleep.assert_not_called()
+        assert partial.exists()
+        assert partial.read_bytes() == b"partial-"
+        assert not dest.exists()

@@ -31,21 +31,12 @@ def test_ensure_authenticates_on_cache_miss(tmp_path, monkeypatch):
     client = EmbyClient("http://host:8096")
     user = {"Name": "alice", "Id": "uid-1"}
 
-    def fake_auth(username, password, **kwargs):
-        client.access_token = "new-tok"
-        client.user_id = "uid-1"
-        client._username = username
-        client._password = password
-        client._persist_auth_cache()
-        return user
-
-    with patch.object(client, "authenticate", side_effect=fake_auth) as auth:
+    with patch.object(client, "authenticate", return_value=user) as auth:
         result = client.ensure_user_session("alice", "secret")
-    auth.assert_called_once()
+    auth.assert_called_once_with("alice", "secret", timeout=None, retries=None)
     assert result is user
-    loaded = load_auth_cache(server_url="http://host:8096", username="alice")
-    assert loaded is not None
-    assert loaded.access_token == "new-tok"
+    # Persistence is authenticate()'s job — covered by test_authenticate_persists_cache.
+    assert load_auth_cache(server_url="http://host:8096", username="alice") is None
 
 
 def test_ensure_force_always_authenticates(tmp_path, monkeypatch):
@@ -76,44 +67,55 @@ def test_authenticate_persists_cache(tmp_path, monkeypatch):
     assert loaded.access_token == "tok-xyz"
 
 
-def test_401_triggers_reauth_once(tmp_path, monkeypatch):
+def test_401_triggers_reauth_and_clears_cache(tmp_path, monkeypatch):
+    """401 on an operational call invalidates cache then re-authenticates once."""
     monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
+    save_auth_cache(
+        AuthCacheEntry.create("http://host:8096", "alice", "stale", "uid-1")
+    )
     client = EmbyClient("http://host:8096")
     client.access_token = "stale"
     client.user_id = "uid-1"
     client._username = "alice"
     client._password = "secret"
-    client._reauth_attempted = False
 
     unauthorized = MagicMock()
     unauthorized.status_code = 401
     unauthorized.raise_for_status.side_effect = requests.HTTPError(
         response=unauthorized
     )
-
+    auth_ok = MagicMock()
+    auth_ok.status_code = 200
+    auth_ok.raise_for_status.return_value = None
+    auth_ok.json.return_value = {
+        "AccessToken": "fresh",
+        "User": {"Name": "alice", "Id": "uid-1"},
+    }
     ok = MagicMock()
     ok.status_code = 200
     ok.raise_for_status.return_value = None
 
-    calls = {"n": 0}
+    from emby_cli.auth_cache import clear_auth_cache as real_clear
 
-    def fake_request(method, url, **kwargs):
-        calls["n"] += 1
-        if calls["n"] == 1:
-            return unauthorized
-        return ok
+    with (
+        patch.object(
+            client.session,
+            "request",
+            side_effect=[unauthorized, auth_ok, ok],
+        ) as req,
+        patch("emby_cli.client.clear_auth_cache", wraps=real_clear) as clear_cache,
+    ):
+        resp = client._get("/Users/Me", retries=1)
 
-    with patch.object(client.session, "request", side_effect=fake_request):
-        with patch.object(
-            client,
-            "authenticate",
-            side_effect=lambda *a, **k: setattr(client, "access_token", "fresh")
-            or {"Name": "alice", "Id": "uid-1"},
-        ) as auth:
-            resp = client._get("/Users/Me", retries=1)
     assert resp is ok
-    auth.assert_called_once()
     assert client.access_token == "fresh"
+    assert req.call_count == 3
+    clear_cache.assert_called_once_with(
+        server_url="http://host:8096", username="alice"
+    )
+    loaded = load_auth_cache(server_url="http://host:8096", username="alice")
+    assert loaded is not None
+    assert loaded.access_token == "fresh"
 
 
 def test_ensure_without_username_or_cache_raises(tmp_path, monkeypatch):
