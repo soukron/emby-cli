@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import sys
 import time
@@ -20,7 +19,12 @@ from emby_cli.download_ops import (
     library_rows,
     match_libraries,
 )
-from emby_cli.mode_args import mode_is_item, mode_is_library, resolve_query
+from emby_cli.mode_args import (
+    mode_is_item,
+    mode_is_library,
+    resolve_item_id,
+    resolve_query,
+)
 from emby_cli.output import Stats, print_done, print_error
 from emby_cli.resolve import (
     print_available_libraries,
@@ -88,9 +92,7 @@ def validate_download_args(args: argparse.Namespace) -> str | None:
         query, err = resolve_query(args)
         if err:
             return err
-        item_id = (getattr(args, "id", None) or "").strip() or None
-        if not item_id and not query:
-            item_id = (os.environ.get("EMBY_ITEM_ID") or "").strip() or None
+        item_id = resolve_item_id(args, include_env=not query)
         if bool(item_id) == bool(query):
             return "With --item, provide exactly one of --id or QUERY/--search"
         return None
@@ -120,9 +122,7 @@ def _cmd_download_item(client: EmbyClient, args: argparse.Namespace) -> None:
     opts = DownloadOpts.from_args(args)
     pick_best = bool(getattr(args, "pick_best_item", False))
     search, _ = resolve_query(args)
-    item_id = (getattr(args, "id", None) or "").strip() or None
-    if not item_id and not search:
-        item_id = (os.environ.get("EMBY_ITEM_ID") or "").strip() or None
+    item_id = resolve_item_id(args, include_env=not search)
 
     if opts.dry_run:
         print("*** DRY RUN — no files will be downloaded ***\n")

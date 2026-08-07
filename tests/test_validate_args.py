@@ -11,6 +11,7 @@ from emby_cli.cli import main
 from emby_cli.commands.download import DownloadOpts, validate_download_args
 from emby_cli.commands.play import validate_play_args
 from emby_cli.commands.search import validate_search_args
+from emby_cli.mode_args import resolve_item_id
 
 
 def test_validate_search_requires_exactly_one_selector():
@@ -100,6 +101,14 @@ def test_download_opts_from_args_uses_defaults_and_normalizes_values():
     assert opts.throttle == 0
     assert opts.method == "download"
     assert opts.dry_run is False
+
+
+def test_resolve_item_id_prefers_flag_over_environment(monkeypatch):
+    monkeypatch.setenv("EMBY_ITEM_ID", "environment-id")
+
+    assert resolve_item_id(argparse.Namespace(id="  flag-id  ")) == "flag-id"
+    assert resolve_item_id(argparse.Namespace(id=None)) == "environment-id"
+    assert resolve_item_id(argparse.Namespace(id=None), include_env=False) is None
 
 
 def test_validate_download_item_embedded_ok():

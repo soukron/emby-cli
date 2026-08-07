@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import shlex
 import shutil
 import subprocess
@@ -13,7 +12,7 @@ from pathlib import Path
 import requests
 
 from emby_cli.client import EmbyClient
-from emby_cli.mode_args import resolve_query
+from emby_cli.mode_args import resolve_item_id, resolve_query
 from emby_cli.output import print_error
 from emby_cli.resolve import (
     classify_resolution,
@@ -86,9 +85,7 @@ def validate_play_args(args: argparse.Namespace) -> str | None:
     query, err = resolve_query(args)
     if err:
         return err
-    item_id = (getattr(args, "id", None) or "").strip() or None
-    if not item_id and not query:
-        item_id = (os.environ.get("EMBY_ITEM_ID") or "").strip() or None
+    item_id = resolve_item_id(args, include_env=not query)
     pick_best = bool(getattr(args, "pick_best_item", False))
 
     if bool(item_id) == bool(query):
@@ -131,9 +128,7 @@ def cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
         sys.exit(1)
 
     query, _ = resolve_query(args)
-    item_id = (getattr(args, "id", None) or "").strip() or None
-    if not item_id and not query:
-        item_id = (os.environ.get("EMBY_ITEM_ID") or "").strip() or None
+    item_id = resolve_item_id(args, include_env=not query)
     pick_best = bool(getattr(args, "pick_best_item", False))
     wait = bool(getattr(args, "wait", False))
 
