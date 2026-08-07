@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.4.0
+
+Added:
+
+- `show`: detail view for `--item` / `--library` (QUERY or `--id`); multiple matches print a disambiguation table with IDs. Libraries include total item count and the last 10 added (`DateCreated`), limited to Movie/Episode/Audio (no Studio, etc.).
+- `search` / `download`: `--item QUERY` / `--library QUERY` (query on the mode flag); `--media-item` is an alias of `--item`. `--search` still works as an alternative selector.
+
 ## 0.3.0
 
 Breaking:

@@ -21,6 +21,7 @@ from emby_cli.commands.login import cmd_login
 from emby_cli.commands.logout import cmd_logout
 from emby_cli.commands.play import cmd_play, validate_play_args
 from emby_cli.commands.search import cmd_search, validate_search_args
+from emby_cli.commands.show import cmd_show, validate_show_args
 from emby_cli.commands.version import cmd_version
 from emby_cli.constants import DEFAULT_OUTPUT, SEARCH_COUNT_DEFAULT
 from emby_cli.credentials import (
@@ -82,14 +83,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     mode = dl.add_mutually_exclusive_group(required=True)
     mode.add_argument(
+        "--item",
         "--media-item",
-        action="store_true",
-        help="Download media items; use with --id or --search",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="QUERY",
+        dest="item",
+        help="Download media items; optional QUERY, or use with --id "
+             "(--media-item is an alias)",
     )
     mode.add_argument(
         "--library",
-        action="store_true",
-        help="Download a library; use with --id or --search",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="QUERY",
+        help="Download a library; optional QUERY, or use with --id",
     )
     mode.add_argument(
         "--from-file",
@@ -105,7 +115,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     dl.add_argument(
         "--search",
-        help="Search query for media item or library",
+        help="Search query (alternative to QUERY on --item / --library)",
     )
     dl.add_argument(
         "--dry-run",
@@ -146,14 +156,23 @@ def build_parser() -> argparse.ArgumentParser:
     sr = sub.add_parser("search", help=_help_by_name["search"])
     sr_mode = sr.add_mutually_exclusive_group(required=True)
     sr_mode.add_argument(
+        "--item",
         "--media-item",
-        action="store_true",
-        help="Search media items; use with --id, --search, or --all",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="QUERY",
+        dest="item",
+        help="Search media items; optional QUERY, or use with --id / --all "
+             "(--media-item is an alias)",
     )
     sr_mode.add_argument(
         "--library",
-        action="store_true",
-        help="Search libraries; use with --id, --search, or --all",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="QUERY",
+        help="Search libraries; optional QUERY, or use with --id / --all",
     )
     sr.add_argument(
         "--id",
@@ -162,7 +181,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sr.add_argument(
         "--search",
-        help="Search query for media item or library",
+        help="Search query (alternative to QUERY on --item / --library)",
     )
     sr.add_argument(
         "--all",
@@ -204,6 +223,37 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="On ambiguous search results, auto-select best ≤1080p "
              "(default: list matches and fail)",
+    )
+
+    sh = sub.add_parser("show", help=_help_by_name["show"])
+    sh_mode = sh.add_mutually_exclusive_group(required=True)
+    sh_mode.add_argument(
+        "--item",
+        "--media-item",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="QUERY",
+        dest="item",
+        help="Show a media item; optional QUERY, or use with --id "
+             "(--media-item is an alias)",
+    )
+    sh_mode.add_argument(
+        "--library",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="QUERY",
+        help="Show a library; optional QUERY, or use with --id",
+    )
+    sh.add_argument(
+        "--id",
+        default=None,
+        help="Media item or library ID",
+    )
+    sh.add_argument(
+        "--search",
+        help="Search query (alternative to QUERY on --item / --library)",
     )
 
     sub.add_parser("version", help=_help_by_name["version"])
@@ -249,6 +299,8 @@ def _validate_command_args(command: str, args: argparse.Namespace) -> str | None
         return validate_download_args(args)
     if command == "play":
         return validate_play_args(args)
+    if command == "show":
+        return validate_show_args(args)
     return None
 
 
@@ -293,6 +345,7 @@ def main() -> None:
         "download": cmd_download,
         "search": cmd_search,
         "play": cmd_play,
+        "show": cmd_show,
     }
     commands[args.command](client, args)
 

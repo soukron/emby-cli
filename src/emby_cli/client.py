@@ -458,15 +458,19 @@ class EmbyClient:
         recursive: bool = True,
         start: int = 0,
         limit: int = 200,
+        *,
+        sort_by: str = "SortName",
+        sort_order: str = "Ascending",
+        fields: str | None = None,
     ) -> dict:
         uid = self.resolve_user_id()
         params: dict = {
             "StartIndex": start,
             "Limit": limit,
             "Recursive": str(recursive).lower(),
-            "Fields": ITEM_FIELDS,
-            "SortBy": "SortName",
-            "SortOrder": "Ascending",
+            "Fields": fields or ITEM_FIELDS,
+            "SortBy": sort_by,
+            "SortOrder": sort_order,
         }
         if parent_id:
             params["ParentId"] = parent_id
@@ -493,11 +497,11 @@ class EmbyClient:
                 break
         return items
 
-    def get_item_info(self, item_id: str) -> dict:
+    def get_item_info(self, item_id: str, *, fields: str | None = None) -> dict:
         uid = self.resolve_user_id()
         resp = self._get(
             f"/Users/{uid}/Items/{item_id}",
-            params={"Fields": ITEM_FIELDS},
+            params={"Fields": fields or ITEM_FIELDS},
         )
         return resp.json()
 

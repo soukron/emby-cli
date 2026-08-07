@@ -1,4 +1,4 @@
-"""search command — media items or libraries (--media-item/--library + --id/--search/--all)."""
+"""search command — media items or libraries (--item/--library + QUERY/--id/--all)."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import sys
 from emby_cli.client import EmbyClient
 from emby_cli.constants import SEARCH_COUNT_DEFAULT, SEARCH_ITEM_TYPES
 from emby_cli.download_ops import find_library
+from emby_cli.mode_args import mode_is_library, resolve_query
 from emby_cli.resolve import print_item_choices, print_library_choices
 
 
@@ -39,9 +40,8 @@ def _print_libraries(
     print()
 
 
-def _selector_count(args: argparse.Namespace) -> int:
+def _selector_count(args: argparse.Namespace, query: str | None) -> int:
     item_id = (getattr(args, "id", None) or "").strip()
-    query = (getattr(args, "search", None) or "").strip()
     use_all = bool(getattr(args, "all", False))
     return sum(bool(x) for x in (item_id, query, use_all))
 
@@ -52,8 +52,14 @@ def validate_search_args(args: argparse.Namespace) -> str | None:
     count = SEARCH_COUNT_DEFAULT if raw_count is None else int(raw_count)
     if count < 1:
         return "error: --count must be >= 1"
-    if _selector_count(args) != 1:
-        return "Provide exactly one of --id, --search, or --all"
+    query, err = resolve_query(args)
+    if err:
+        return err
+    if _selector_count(args, query) != 1:
+        return (
+            "Provide exactly one of QUERY on --item/--library, "
+            "--search, --id, or --all"
+        )
     return None
 
 
@@ -69,10 +75,10 @@ def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
     raw_count = getattr(args, "count", SEARCH_COUNT_DEFAULT)
     count = SEARCH_COUNT_DEFAULT if raw_count is None else int(raw_count)
     item_id = (getattr(args, "id", None) or "").strip() or None
-    query = (getattr(args, "search", None) or "").strip() or None
+    query, _ = resolve_query(args)
     use_all = bool(getattr(args, "all", False))
 
-    if getattr(args, "library", False):
+    if mode_is_library(args):
         libraries = client.get_libraries()
         if use_all:
             _print_libraries(client, libraries, count=count)
@@ -87,7 +93,7 @@ def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
             _print_libraries(client, [lib], count=count)
             return
 
-        needle = query.lower()
+        needle = (query or "").lower()
         matches = [
             lib for lib in libraries
             if needle in (lib.get("Name") or "").lower()
@@ -95,15 +101,15 @@ def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
         _print_libraries(client, matches, count=count)
         return
 
-    # --media-item
+    # --item / --media-item
     if use_all:
         probe = client.get_items(item_type=SEARCH_ITEM_TYPES, limit=0)
         total = int(probe.get("TotalRecordCount") or 0)
         if total > count:
             print(
                 f"There are {total} media items on this server. "
-                "Please narrow the results with --search, for example:\n"
-                '  emby-cli search --media-item --search "title"'
+                "Please narrow the results with a query, for example:\n"
+                '  emby-cli search --item "title"'
             )
             sys.exit(1)
         if total == 0:

@@ -11,7 +11,7 @@ def test_build_parser_subcommands():
     parser = build_parser()
     subs = parser._subparsers._group_actions[0].choices
     assert set(subs) == {
-        "help", "login", "logout", "config", "download", "search", "play", "version", "info",
+        "help", "login", "logout", "config", "download", "search", "show", "play", "version", "info",
     }
 
 
@@ -37,11 +37,32 @@ def test_download_item_id():
         "--server", "http://x", "--api-key", "k",
         "download", "--media-item", "--id", "abc",
     ])
-    assert args.media_item is True
+    assert args.item == ""
     assert args.id == "abc"
     assert args.output == "./downloads"
     assert args.method == "download"
     assert args.dry_run is False
+
+
+def test_download_item_alias():
+    parser = build_parser()
+    args = parser.parse_args([
+        "--server", "http://x", "--api-key", "k",
+        "download", "--item", "--id", "abc",
+    ])
+    assert args.item == ""
+    assert args.id == "abc"
+
+
+def test_download_item_query_embedded():
+    parser = build_parser()
+    args = parser.parse_args([
+        "--server", "http://x", "--api-key", "k",
+        "download", "--item", "fast and furious",
+    ])
+    assert args.item == "fast and furious"
+    assert args.search is None
+    assert args.id is None
 
 
 def test_download_item_search_pick_best():
@@ -50,7 +71,7 @@ def test_download_item_search_pick_best():
         "--server", "http://x", "--api-key", "k",
         "download", "--media-item", "--search", "Show S01E01", "--pick-best-item",
     ])
-    assert args.media_item is True
+    assert args.item == ""
     assert args.search == "Show S01E01"
     assert args.pick_best_item is True
 
@@ -61,8 +82,18 @@ def test_download_library_search():
         "--server", "http://x", "--api-key", "k",
         "download", "--library", "--search", "Movies",
     ])
-    assert args.library is True
+    assert args.library == ""
     assert args.search == "Movies"
+
+
+def test_download_library_query_embedded():
+    parser = build_parser()
+    args = parser.parse_args([
+        "--server", "http://x", "--api-key", "k",
+        "download", "--library", "peliculas",
+    ])
+    assert args.library == "peliculas"
+    assert args.search is None
 
 
 def test_download_from_file_dry_run():
@@ -113,16 +144,38 @@ def test_play_search_pick_best():
     assert args.pick_best_item is True
 
 
-def test_search_item_query():
+def test_search_item_query_embedded():
     parser = build_parser()
     args = parser.parse_args([
         "--server", "http://x", "--api-key", "k",
-        "search", "--media-item", "--search", "matrix",
+        "search", "--item", "fast and furious",
     ])
-    assert args.media_item is True
+    assert args.item == "fast and furious"
+    assert args.library is None
+    assert args.search is None
+    assert args.id is None
+    assert args.count == 30
+
+
+def test_search_item_query_via_search_flag():
+    parser = build_parser()
+    args = parser.parse_args([
+        "--server", "http://x", "--api-key", "k",
+        "search", "--item", "--search", "matrix",
+    ])
+    assert args.item == ""
     assert args.search == "matrix"
     assert args.id is None
     assert args.count == 30
+
+
+def test_search_media_item_alias():
+    parser = build_parser()
+    args = parser.parse_args([
+        "--server", "http://x", "--api-key", "k",
+        "search", "--media-item", "matrix",
+    ])
+    assert args.item == "matrix"
 
 
 def test_search_library_all():
@@ -131,7 +184,7 @@ def test_search_library_all():
         "--server", "http://x", "--api-key", "k",
         "search", "--library", "--all",
     ])
-    assert args.library is True
+    assert args.library == ""
     assert args.all is True
     assert args.id is None
     assert args.search is None
@@ -141,9 +194,9 @@ def test_search_item_all():
     parser = build_parser()
     args = parser.parse_args([
         "--server", "http://x", "--api-key", "k",
-        "search", "--media-item", "--all",
+        "search", "--item", "--all",
     ])
-    assert args.media_item is True
+    assert args.item == ""
     assert args.all is True
 
 
@@ -153,18 +206,28 @@ def test_search_library_id():
         "--server", "http://x", "--api-key", "k",
         "search", "--library", "--id", "614156",
     ])
-    assert args.library is True
+    assert args.library == ""
     assert args.id == "614156"
     assert args.search is None
 
 
-def test_search_library_query():
+def test_search_library_query_embedded():
+    parser = build_parser()
+    args = parser.parse_args([
+        "--server", "http://x", "--api-key", "k",
+        "search", "--library", "peliculas",
+    ])
+    assert args.library == "peliculas"
+    assert args.search is None
+
+
+def test_search_library_query_via_search_flag():
     parser = build_parser()
     args = parser.parse_args([
         "--server", "http://x", "--api-key", "k",
         "search", "--library", "--search", "PELICULAS",
     ])
-    assert args.library is True
+    assert args.library == ""
     assert args.search == "PELICULAS"
 
 
@@ -172,10 +235,9 @@ def test_search_item_count():
     parser = build_parser()
     args = parser.parse_args([
         "--server", "http://x", "--api-key", "k",
-        "search", "--media-item", "--search", "matrix", "--count", "50",
+        "search", "--item", "matrix", "--count", "50",
     ])
-    assert args.media_item is True
-    assert args.search == "matrix"
+    assert args.item == "matrix"
     assert args.count == 50
 
 
@@ -192,7 +254,7 @@ def test_search_modes_exclusive():
     with pytest.raises(SystemExit):
         parser.parse_args([
             "--server", "http://x", "--api-key", "k",
-            "search", "--media-item", "--library", "--id", "x",
+            "search", "--item", "--library", "--id", "x",
         ])
 
 

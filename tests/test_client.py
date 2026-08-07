@@ -32,17 +32,23 @@ def test_ensure_api_key_noop_when_present():
     assert "api_key=tok" not in url
 
 
-def test_get_item_info_requests_fields():
+def test_get_items_sort_params():
     client = EmbyClient("http://host:8096", api_key="k")
     client.user_id = "uid"
     mock_resp = MagicMock()
-    mock_resp.json.return_value = {"Id": "1", "Name": "X"}
+    mock_resp.json.return_value = {"Items": [], "TotalRecordCount": 0}
     with patch.object(client, "_get", return_value=mock_resp) as get:
-        client.get_item_info("abc")
-    path, = get.call_args.args[:1] if get.call_args.args else (get.call_args[0][0],)
-    assert path == "/Users/uid/Items/abc"
-    params = get.call_args.kwargs.get("params") or get.call_args[1].get("params")
-    assert "MediaSources" in params["Fields"]
+        client.get_items(
+            parent_id="lib",
+            limit=10,
+            sort_by="DateCreated",
+            sort_order="Descending",
+        )
+    params = get.call_args.kwargs["params"]
+    assert params["SortBy"] == "DateCreated"
+    assert params["SortOrder"] == "Descending"
+    assert params["ParentId"] == "lib"
+    assert params["Limit"] == 10
 
 
 def test_resolve_user_id_uses_users_me():

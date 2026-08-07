@@ -50,18 +50,22 @@ emby-cli config current-server
 emby-cli config view
 emby-cli version
 emby-cli info
-emby-cli search --media-item --search "Title"
-emby-cli search --media-item --search "Title" --count 50
-emby-cli search --media-item --id 123456
-emby-cli search --media-item --all
+emby-cli search --item "Title"
+emby-cli search --item "Title" --count 50
+emby-cli search --item --id 123456
+emby-cli search --item --all
 emby-cli search --library --all
 emby-cli search --library --id 614156
-emby-cli search --library --search "PELICULAS"
+emby-cli search --library "PELICULAS"
+emby-cli show --item "Title"
+emby-cli show --item --id 123456
+emby-cli show --library "PELICULAS"
+emby-cli show --library --id 614156
 
-emby-cli download --media-item --id 123456
-emby-cli download --media-item --search "californication S01E01" --pick-best-item
+emby-cli download --item --id 123456
+emby-cli download --item "californication S01E01" --pick-best-item
 emby-cli download --library --id 12345
-emby-cli download --library --search "PELICULAS 4K"
+emby-cli download --library "PELICULAS 4K"
 emby-cli download --from-file titles.txt --dry-run
 
 emby-cli play --id 123456
@@ -70,7 +74,7 @@ emby-cli play --search "Pelicula (1980)" --pick-best-item
 
 `info` reports libraries and totals from `GET /Items/Counts` (totals may include multiple versions of the same title).
 
-Title resolution (`play --search`, `download --media-item --search`, `download --from-file`) is **strict** by default (year mismatch or multiple matches fail). Pass `--pick-best-item` to auto-select the best ≤1080p version. With `--from-file` / `--media-item --search`, a season line like `Show S01` downloads the whole season (same pick-best rule per episode version). Library `--search` requires an exact name match (case-insensitive); no pick-best.
+Title resolution (`play --search`, `download --item` with a query, `download --from-file`) is **strict** by default (year mismatch or multiple matches fail). Pass `--pick-best-item` to auto-select the best ≤1080p version. With `--from-file` or `--item` + query, a season line like `Show S01` downloads the whole season (same pick-best rule per episode version). Library query requires an exact name match (case-insensitive); no pick-best.
 
 `--dry-run` / `-n` works for all `download` modes (no files written).
 

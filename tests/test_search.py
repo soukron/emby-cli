@@ -1,4 +1,4 @@
-"""Tests for search --media-item --all total gate."""
+"""Tests for search --item --all total gate."""
 
 from __future__ import annotations
 
@@ -18,16 +18,16 @@ def test_item_all_refuses_when_too_many(capsys):
         id=None,
         search=None,
         all=True,
-        media_item=True,
-        library=False,
+        item="",
+        library=None,
     )
     with pytest.raises(SystemExit) as exc:
         search_mod.cmd_search(client, args)
     assert exc.value.code == 1
     out = capsys.readouterr().out
     assert f"There are {SEARCH_COUNT_DEFAULT + 1} media items on this server." in out
-    assert "Please narrow the results with --search" in out
-    assert 'emby-cli search --media-item --search "title"' in out
+    assert "Please narrow the results with a query" in out
+    assert 'emby-cli search --item "title"' in out
     client.get_all_items.assert_not_called()
 
 
@@ -43,8 +43,8 @@ def test_item_all_lists_when_within_limit(capsys):
         id=None,
         search=None,
         all=True,
-        media_item=True,
-        library=False,
+        item="",
+        library=None,
     )
     search_mod.cmd_search(client, args)
     out = capsys.readouterr().out
