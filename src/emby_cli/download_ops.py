@@ -131,7 +131,7 @@ def download_items(
             total=total if show_progress else None,
             dry_run=dry_run,
         )
-        if result == "ok":
+        if result in ("ok", "dry_run"):
             stats.ok += 1
         elif result == "skip":
             stats.skip += 1
