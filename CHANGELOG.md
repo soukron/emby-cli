@@ -2,8 +2,22 @@
 
 ## Unreleased
 
-- `download --dry-run`: count planned items as `ok` in the Done summary (was always `ok=0`).
-- Dev: editable install now links to `src/` (pytest sees live edits without reinstall).
+Changed:
+
+- Validation and per-item `error:` messages go to **stderr** (tables and normal progress stay on stdout), so scripts can separate data from failures.
+- `download --dry-run`: planned items count as `ok` in the Done summary (was always `ok=0`).
+- 401 re-authentication is limited to **one attempt per request** (no retry loop if the new token is also rejected).
+
+Fixed:
+
+- HLS segment downloads retry when the body disconnects mid-stream and overwrite the partial segment.
+- Reauth invalidates the cached session before obtaining a new AccessToken.
+
+Internal:
+
+- Shared helpers for retries/backoff, pagination, download loop, item-id resolution, and optional request kwargs.
+- TypedDict shapes for Emby API responses; Ruff lint gate in CI.
+- Much stronger automated tests (retry matrix, title resolution, download skip/dry-run, stderr contracts). Editable installs link to `src/` so pytest sees live edits.
 
 ## 0.5.1
 
