@@ -9,21 +9,24 @@ import sys
 import time
 from pathlib import Path
 
+import requests
+
 from emby_cli.client import EmbyClient
 from emby_cli.download_ops import (
     download_library_items,
     download_one_item,
     find_library,
+    library_rows,
+    match_libraries,
 )
 from emby_cli.mode_args import mode_is_item, mode_is_library, resolve_query
 from emby_cli.output import Stats, print_done, print_error
-from emby_cli.resolve import resolve_title_items
+from emby_cli.resolve import (
+    print_available_libraries,
+    print_library_choices,
+    resolve_title_items,
+)
 from emby_cli.util import format_duration
-
-
-def _print_available_libraries(libraries: list[dict]) -> None:
-    for lib in libraries:
-        print(f"  - [{lib.get('Id', '?')}] {lib.get('Name', '?')}")
 
 
 def _download_items(
@@ -115,7 +118,7 @@ def _cmd_download_item(client: EmbyClient, args: argparse.Namespace) -> None:
         for idx, iid in enumerate(item_ids, 1):
             try:
                 items.append(client.get_item_info(iid))
-            except Exception as exc:
+            except (requests.RequestException, RuntimeError) as exc:
                 print_error(f"fetching item {iid}: {exc}", idx=idx, total=total)
                 stats.error += 1
         if items:
@@ -170,14 +173,25 @@ def _cmd_download_library(client: EmbyClient, args: argparse.Namespace) -> None:
     libraries = client.get_libraries()
     if library_id:
         lib = find_library(libraries, library_id=library_id)
-        label = f"id '{library_id}'"
+        if not lib:
+            print(f"Library id '{library_id}' not found. Available:")
+            print_available_libraries(libraries)
+            sys.exit(1)
     else:
-        lib = find_library(libraries, name=search)
-        label = f"'{search}'"
-    if not lib:
-        print(f"Library {label} not found. Available:")
-        _print_available_libraries(libraries)
-        sys.exit(1)
+        matches = match_libraries(libraries, search or "")
+        if not matches:
+            print(f"Library '{search}' not found. Available:")
+            print_available_libraries(libraries)
+            sys.exit(1)
+        if len(matches) > 1:
+            print(
+                f"Multiple matches ({len(matches)}). "
+                "Re-run with --id, for example:\n"
+                f'  emby-cli download --library --id {matches[0].get("Id", "<id>")}'
+            )
+            print_library_choices(library_rows(client, matches))
+            sys.exit(1)
+        lib = matches[0]
 
     stats = download_library_items(
         client,
@@ -231,7 +245,7 @@ def _cmd_download_from_file(client: EmbyClient, args: argparse.Namespace) -> Non
             print(f"\n[{idx}/{len(lines)}] Direct ID: {item_id}")
             try:
                 item = client.get_item_info(item_id)
-            except Exception as exc:
+            except (requests.RequestException, RuntimeError) as exc:
                 print_error(str(exc))
                 elapsed = time.monotonic() - line_t0
                 line_stats.append((label, "ERROR", elapsed, str(exc)))

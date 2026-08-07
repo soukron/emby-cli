@@ -5,24 +5,18 @@ from __future__ import annotations
 import argparse
 import sys
 
+import requests
+
 from emby_cli.client import EmbyClient
 from emby_cli.constants import SEARCH_COUNT_DEFAULT, SEARCH_ITEM_TYPES
-from emby_cli.download_ops import find_library
+from emby_cli.download_ops import find_library, library_rows, match_libraries
 from emby_cli.mode_args import mode_is_library, resolve_query
-from emby_cli.resolve import print_item_choices, print_library_choices
-
-
-def _library_rows(client: EmbyClient, libraries: list[dict]) -> list[dict]:
-    rows: list[dict] = []
-    for lib in libraries:
-        page = client.get_items(parent_id=lib["Id"], limit=0)
-        rows.append({
-            "Id": lib.get("Id", ""),
-            "Name": lib.get("Name") or "?",
-            "Type": lib.get("CollectionType") or lib.get("Type") or "Library",
-            "ItemCount": page.get("TotalRecordCount", 0),
-        })
-    return rows
+from emby_cli.resolve import (
+    print_available_libraries,
+    print_item_choices,
+    print_library_choices,
+    sort_for_display,
+)
 
 
 def _print_libraries(
@@ -34,8 +28,8 @@ def _print_libraries(
     if not libraries:
         print("No results.")
         return
-    shown = libraries[:count]
-    print_library_choices(_library_rows(client, shown))
+    shown = sort_for_display(libraries)[:count]
+    print_library_choices(library_rows(client, shown))
     print(f"\nTotal: {len(shown)}")
     print()
 
@@ -87,17 +81,12 @@ def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
             lib = find_library(libraries, library_id=item_id)
             if not lib:
                 print(f"Library id '{item_id}' not found. Available:")
-                for lib in libraries:
-                    print(f"  - [{lib.get('Id', '?')}] {lib.get('Name', '?')}")
+                print_available_libraries(libraries)
                 sys.exit(1)
             _print_libraries(client, [lib], count=count)
             return
 
-        needle = (query or "").lower()
-        matches = [
-            lib for lib in libraries
-            if needle in (lib.get("Name") or "").lower()
-        ]
+        matches = match_libraries(libraries, query or "")
         _print_libraries(client, matches, count=count)
         return
 
@@ -124,7 +113,7 @@ def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
     if item_id:
         try:
             item = client.get_item_info(item_id)
-        except Exception as exc:
+        except (requests.RequestException, RuntimeError) as exc:
             print(f"error: fetching item {item_id}: {exc}", file=sys.stderr)
             sys.exit(1)
         print_item_choices([item])

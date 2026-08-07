@@ -79,7 +79,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     dl = sub.add_parser(
         "download",
-        help=_help_by_name["download"],
+        help=(
+            f"{_help_by_name['download']} "
+            "(authorized servers only; respect the server's terms)"
+        ),
     )
     mode = dl.add_mutually_exclusive_group(required=True)
     mode.add_argument(
@@ -199,13 +202,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     pl = sub.add_parser("play", help=_help_by_name["play"])
     pl.add_argument(
+        "--item",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="QUERY",
+        dest="item",
+        help="Media item to play; optional QUERY, or use with --id",
+    )
+    pl.add_argument(
         "--id",
         default=None,
         help="Media item ID to play",
     )
     pl.add_argument(
         "--search",
-        help="Title line: 'Movie (2010)' or 'Show (2000) S01E01'. Allows partial matches.",
+        help="Title line (alternative to QUERY on --item): "
+             "'Movie (2010)' or 'Show (2000) S01E01'. Allows partial matches.",
     )
     pl.add_argument(
         "--player",
@@ -230,30 +243,23 @@ def build_parser() -> argparse.ArgumentParser:
     sh_mode.add_argument(
         "--item",
         "--media-item",
-        nargs="?",
-        const="",
+        action="store_const",
+        const=True,
         default=None,
-        metavar="QUERY",
         dest="item",
-        help="Show a media item; optional QUERY, or use with --id "
-             "(--media-item is an alias)",
+        help="Show a media item (requires --id; --media-item is an alias)",
     )
     sh_mode.add_argument(
         "--library",
-        nargs="?",
-        const="",
+        action="store_const",
+        const=True,
         default=None,
-        metavar="QUERY",
-        help="Show a library; optional QUERY, or use with --id",
+        help="Show a library (requires --id)",
     )
     sh.add_argument(
         "--id",
-        default=None,
+        required=True,
         help="Media item or library ID",
-    )
-    sh.add_argument(
-        "--search",
-        help="Search query (alternative to QUERY on --item / --library)",
     )
 
     sub.add_parser("version", help=_help_by_name["version"])

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import requests
+
 from emby_cli.client import EmbyClient
-from emby_cli.constants import DOWNLOADABLE_TYPES
+from emby_cli.constants import DOWNLOADABLE_TYPES, SHOW_LIBRARY_ITEM_TYPES
 from emby_cli.output import Stats, print_download, print_error, print_section, print_skip
 from emby_cli.resolve import item_label
 from emby_cli.util import (
@@ -91,9 +93,41 @@ def download_one_item(
     try:
         do_download(client, item_id, item, dest, method, throttle)
         return "ok"
-    except Exception as exc:
+    except (requests.RequestException, RuntimeError, OSError) as exc:
         print_error(str(exc), idx=idx, total=total)
         return "error"
+
+
+def match_libraries(libraries: list[dict], query: str) -> list[dict]:
+    """Return libraries whose Name contains *query* (case-insensitive substring)."""
+    needle = (query or "").lower()
+    return [
+        lib for lib in libraries
+        if needle in (lib.get("Name") or "").lower()
+    ]
+
+
+def library_rows(
+    client: EmbyClient,
+    libraries: list[dict],
+    *,
+    item_types: str = SHOW_LIBRARY_ITEM_TYPES,
+) -> list[dict]:
+    """Build choice-table rows with ItemCount filtered like ``show --library``."""
+    rows: list[dict] = []
+    for lib in libraries:
+        page = client.get_items(
+            parent_id=lib["Id"],
+            item_type=item_types,
+            limit=0,
+        )
+        rows.append({
+            "Id": lib.get("Id", ""),
+            "Name": lib.get("Name") or "?",
+            "Type": lib.get("CollectionType") or lib.get("Type") or "Library",
+            "ItemCount": page.get("TotalRecordCount", 0),
+        })
+    return rows
 
 
 def find_library(
@@ -104,7 +138,8 @@ def find_library(
 ) -> dict | None:
     """Resolve one library view by Id (exact or unique prefix) or by unique name.
 
-    Name match is case-insensitive. Zero or multiple matches → None.
+    Name match is case-insensitive exact. Zero or multiple matches → None.
+    Prefer ``match_libraries`` for QUERY name resolution (substring).
     """
     if library_id:
         needle = library_id.strip()

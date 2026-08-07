@@ -1,6 +1,23 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
+
+Breaking:
+
+- `show`: `--item` / `--library` require `--id` only (no QUERY / `--search`). Find IDs with `search`, then inspect with `show`.
+
+Added:
+
+- `play --item [QUERY]` (aligned with search/download); `--search` remains an alternative.
+- `play --id` accepts a comma-separated list of IDs (same idea as `download --item --id`).
+- Library name matching unified to substring + disambiguation for `search` / `download` (`match_libraries`); shared `library_rows` counts use `Movie,Episode,Audio`.
+- User-facing lists sort by Id descending, then Name alphabetically.
+
+Changed:
+
+- `show`: omit empty/`?` Media fields; library recent list still Movie/Episode/Audio.
+- Narrow item-fetch `except` to `RequestException` / `RuntimeError` (plus `OSError` in download I/O).
+- Docs: CSV `--id` for download/play; download `-h` authorized-use note.
 
 ## 0.4.1
 

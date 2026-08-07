@@ -135,14 +135,36 @@ def test_validate_download_from_file_rejects_id():
 
 def test_validate_play_needs_selector(monkeypatch):
     monkeypatch.delenv("EMBY_ITEM_ID", raising=False)
-    args = argparse.Namespace(id=None, search=None, pick_best_item=False)
-    assert validate_play_args(args) == "Provide exactly one of --id or --search"
-
-
-def test_validate_play_pick_best_only_with_search():
-    args = argparse.Namespace(id="1", search=None, pick_best_item=True)
+    args = argparse.Namespace(
+        id=None, item=None, search=None, pick_best_item=False,
+    )
     assert validate_play_args(args) == (
-        "--pick-best-item can only be used with --search"
+        "Provide exactly one of --id or QUERY/--search"
+    )
+
+
+def test_validate_play_item_query_ok():
+    args = argparse.Namespace(
+        id=None, item="Movie (2010)", search=None, pick_best_item=True,
+    )
+    assert validate_play_args(args) is None
+
+
+def test_validate_play_pick_best_only_with_query():
+    args = argparse.Namespace(
+        id="1", item=None, search=None, pick_best_item=True,
+    )
+    assert validate_play_args(args) == (
+        "--pick-best-item can only be used with QUERY/--search"
+    )
+
+
+def test_validate_play_item_and_search_conflict():
+    args = argparse.Namespace(
+        id=None, item="a", search="b", pick_best_item=False,
+    )
+    assert validate_play_args(args) == (
+        "Do not pass --search when QUERY is given to --item / --library"
     )
 
 
@@ -192,4 +214,6 @@ def test_main_play_without_selector_skips_auth(capsys, monkeypatch):
             main()
     assert exc.value.code == 1
     open_client.assert_not_called()
-    assert "Provide exactly one of --id or --search" in capsys.readouterr().out
+    assert "Provide exactly one of --id or QUERY/--search" in (
+        capsys.readouterr().out
+    )

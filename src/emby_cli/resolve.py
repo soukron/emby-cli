@@ -90,6 +90,22 @@ def item_label(item: dict) -> str:
     return name
 
 
+def sort_for_display(rows: list[dict]) -> list[dict]:
+    """Sort user-facing lists: Id descending, then Name alphabetically.
+
+    Numeric Emby Ids sort as integers (desc). Non-numeric Ids sort as
+    strings descending. Name tie-break is case-insensitive ascending.
+    """
+    def key(row: dict) -> tuple:
+        iid = str(row.get("Id", ""))
+        name = (row.get("Name") or "").casefold()
+        if iid.isdigit():
+            return (0, -int(iid), name)
+        return (1, tuple(-ord(c) for c in iid), name)
+
+    return sorted(rows, key=key)
+
+
 def print_item_choices(
     items: list[dict],
     *,
@@ -99,6 +115,7 @@ def print_item_choices(
     """Print a compact, uniform table of items (movies, series, episodes)."""
     if not items:
         return
+    items = sort_for_display(items)
     excluded = excluded or set()
     id_w = max(len("ID"), max(len(str(it.get("Id", ""))) for it in items))
     name_w = 44
@@ -131,10 +148,17 @@ def print_item_choices(
         )
 
 
+def print_available_libraries(libraries: list[dict]) -> None:
+    """Bullet list of libraries for 'not found / Available:' messages."""
+    for lib in sort_for_display(libraries):
+        print(f"  - [{lib.get('Id', '?')}] {lib.get('Name', '?')}")
+
+
 def print_library_choices(libraries: list[dict]) -> None:
     """Print libraries: ID, Name, Type, Items (no Year/Res/Size)."""
     if not libraries:
         return
+    libraries = sort_for_display(libraries)
     id_w = max(len("ID"), max(len(str(lib.get("Id", ""))) for lib in libraries))
     name_w = 44
     type_w = max(len("Type"), max(len(str(lib.get("Type") or "?")) for lib in libraries))

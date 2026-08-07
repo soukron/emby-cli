@@ -1,4 +1,4 @@
-"""show command — detail view for a media item or library."""
+"""show command — detail view for a media item or library by --id."""
 
 from __future__ import annotations
 
@@ -6,21 +6,22 @@ import argparse
 import sys
 import textwrap
 
+import requests
+
 from emby_cli.client import EmbyClient
 from emby_cli.constants import (
     SHOW_ITEM_FIELDS,
-    SHOW_ITEM_TYPES,
     SHOW_LIBRARY_ITEM_TYPES,
     SHOW_RECENT_COUNT,
 )
 from emby_cli.download_ops import find_library
-from emby_cli.mode_args import mode_is_item, mode_is_library, resolve_query
+from emby_cli.mode_args import mode_is_item, mode_is_library
 from emby_cli.resolve import (
     classify_resolution,
     item_label,
     item_video_width,
-    print_item_choices,
-    print_library_choices,
+    print_available_libraries,
+    sort_for_display,
 )
 from emby_cli.util import (
     format_duration,
@@ -34,12 +35,9 @@ def validate_show_args(args: argparse.Namespace) -> str | None:
     """Return an error message if mode/selectors are invalid; else ``None``."""
     if not mode_is_item(args) and not mode_is_library(args):
         return "Specify --item or --library"
-    query, err = resolve_query(args)
-    if err:
-        return err
-    item_id = (getattr(args, "id", None) or "").strip() or None
-    if bool(item_id) == bool(query):
-        return "Provide exactly one of --id or QUERY/--search"
+    item_id = (getattr(args, "id", None) or "").strip()
+    if not item_id:
+        return "Provide --id"
     return None
 
 
@@ -54,7 +52,7 @@ def _print_kv(label: str, value: object | None) -> None:
     if value is None:
         return
     text = str(value).strip()
-    if not text:
+    if not text or text == "?":
         return
     print(f"{label}: {text}")
 
@@ -65,6 +63,16 @@ def _print_overview(overview: str | None) -> None:
     print("overview:")
     for line in textwrap.wrap(overview.strip(), width=78):
         print(f"  {line}")
+
+
+def _media_field_value(value: object | None) -> str | None:
+    """Return a printable media value, or ``None`` if missing / unknown."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text == "?":
+        return None
+    return text
 
 
 def _print_media_item(item: dict) -> None:
@@ -84,18 +92,24 @@ def _print_media_item(item: dict) -> None:
         _print_kv("items", recursive)
     print()
 
-    print("Media")
-    _print_kv("resolution", classify_resolution(item_video_width(item)))
-    _print_kv("size", format_size(item_remote_size(item)))
-    _print_kv("runtime", format_duration(item_duration_seconds(item)))
     container = item.get("Container")
     if not container:
         sources = item.get("MediaSources") or []
         if sources:
             container = sources[0].get("Container")
-    _print_kv("container", container)
-    _print_kv("path", item.get("Path"))
-    print()
+    media_rows = [
+        ("resolution", _media_field_value(classify_resolution(item_video_width(item)))),
+        ("size", _media_field_value(format_size(item_remote_size(item)))),
+        ("runtime", _media_field_value(format_duration(item_duration_seconds(item)))),
+        ("container", _media_field_value(container)),
+        ("path", _media_field_value(item.get("Path"))),
+    ]
+    useful = [(label, value) for label, value in media_rows if value is not None]
+    if useful:
+        print("Media")
+        for label, value in useful:
+            _print_kv(label, value)
+        print()
 
     print("Meta")
     _print_kv("added", _format_emby_date(item.get("DateCreated")))
@@ -109,23 +123,11 @@ def _print_media_item(item: dict) -> None:
     _print_overview(item.get("Overview"))
 
 
-def _library_rows(client: EmbyClient, libraries: list[dict]) -> list[dict]:
-    rows: list[dict] = []
-    for lib in libraries:
-        page = client.get_items(parent_id=lib["Id"], limit=0)
-        rows.append({
-            "Id": lib.get("Id", ""),
-            "Name": lib.get("Name") or "?",
-            "Type": lib.get("CollectionType") or lib.get("Type") or "Library",
-            "ItemCount": page.get("TotalRecordCount", 0),
-        })
-    return rows
-
-
 def _print_recent_items(items: list[dict]) -> None:
     if not items:
         print("(none)")
         return
+    items = sort_for_display(items)
     id_w = max(len("ID"), max(len(str(it.get("Id", ""))) for it in items))
     name_w = 40
     header = (
@@ -182,83 +184,25 @@ def _print_library(client: EmbyClient, lib: dict) -> None:
     _print_recent_items(recent)
 
 
-def _disambiguate_items(matches: list[dict]) -> None:
-    print(
-        f"Multiple matches ({len(matches)}). "
-        "Re-run with --id, for example:\n"
-        f'  emby-cli show --item --id {matches[0].get("Id", "<id>")}'
-    )
-    print_item_choices(matches)
-
-
-def _disambiguate_libraries(client: EmbyClient, matches: list[dict]) -> None:
-    print(
-        f"Multiple matches ({len(matches)}). "
-        "Re-run with --id, for example:\n"
-        f'  emby-cli show --library --id {matches[0].get("Id", "<id>")}'
-    )
-    print_library_choices(_library_rows(client, matches))
-
-
 def _cmd_show_item(client: EmbyClient, args: argparse.Namespace) -> None:
-    query, _ = resolve_query(args)
-    item_id = (getattr(args, "id", None) or "").strip() or None
-
-    if item_id:
-        try:
-            item = client.get_item_info(item_id, fields=SHOW_ITEM_FIELDS)
-        except Exception as exc:
-            print(f"error: fetching item {item_id}: {exc}", file=sys.stderr)
-            sys.exit(1)
-        _print_media_item(item)
-        return
-
-    matches = client.search_items(
-        query or "",
-        item_types=SHOW_ITEM_TYPES,
-        limit=30,
-    )
-    if not matches:
-        print("No results.")
+    item_id = (getattr(args, "id", None) or "").strip()
+    try:
+        item = client.get_item_info(item_id, fields=SHOW_ITEM_FIELDS)
+    except (requests.RequestException, RuntimeError) as exc:
+        print(f"error: fetching item {item_id}: {exc}", file=sys.stderr)
         sys.exit(1)
-    if len(matches) > 1:
-        _disambiguate_items(matches)
-        sys.exit(1)
-
-    item = client.get_item_info(matches[0]["Id"], fields=SHOW_ITEM_FIELDS)
     _print_media_item(item)
 
 
 def _cmd_show_library(client: EmbyClient, args: argparse.Namespace) -> None:
-    query, _ = resolve_query(args)
-    library_id = (getattr(args, "id", None) or "").strip() or None
+    library_id = (getattr(args, "id", None) or "").strip()
     libraries = client.get_libraries()
-
-    if library_id:
-        lib = find_library(libraries, library_id=library_id)
-        if not lib:
-            print(f"Library id '{library_id}' not found. Available:")
-            for row in libraries:
-                print(f"  - [{row.get('Id', '?')}] {row.get('Name', '?')}")
-            sys.exit(1)
-        _print_library(client, lib)
-        return
-
-    needle = (query or "").lower()
-    matches = [
-        lib for lib in libraries
-        if needle in (lib.get("Name") or "").lower()
-    ]
-    if not matches:
-        print(f"Library '{query}' not found. Available:")
-        for row in libraries:
-            print(f"  - [{row.get('Id', '?')}] {row.get('Name', '?')}")
+    lib = find_library(libraries, library_id=library_id)
+    if not lib:
+        print(f"Library id '{library_id}' not found. Available:")
+        print_available_libraries(libraries)
         sys.exit(1)
-    if len(matches) > 1:
-        _disambiguate_libraries(client, matches)
-        sys.exit(1)
-
-    _print_library(client, matches[0])
+    _print_library(client, lib)
 
 
 def cmd_show(client: EmbyClient, args: argparse.Namespace) -> None:

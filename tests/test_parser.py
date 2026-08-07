@@ -131,7 +131,28 @@ def test_play_id():
         "play", "--id", "abc",
     ])
     assert args.id == "abc"
+    assert args.item is None
     assert args.search is None
+
+
+def test_play_id_csv():
+    parser = build_parser()
+    args = parser.parse_args([
+        "--server", "http://x", "--api-key", "k",
+        "play", "--id", "1,2,3",
+    ])
+    assert args.id == "1,2,3"
+
+
+def test_play_item_query_embedded():
+    parser = build_parser()
+    args = parser.parse_args([
+        "--server", "http://x", "--api-key", "k",
+        "play", "--item", "Movie (2010)", "--pick-best-item",
+    ])
+    assert args.item == "Movie (2010)"
+    assert args.search is None
+    assert args.pick_best_item is True
 
 
 def test_play_search_pick_best():
@@ -141,7 +162,18 @@ def test_play_search_pick_best():
         "play", "--search", "Movie (2010)", "--pick-best-item",
     ])
     assert args.search == "Movie (2010)"
+    assert args.item is None
     assert args.pick_best_item is True
+
+
+def test_play_item_with_id():
+    parser = build_parser()
+    args = parser.parse_args([
+        "--server", "http://x", "--api-key", "k",
+        "play", "--item", "--id", "abc",
+    ])
+    assert args.item == ""
+    assert args.id == "abc"
 
 
 def test_search_item_query_embedded():

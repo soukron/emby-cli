@@ -10,7 +10,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import requests
+
 from emby_cli.client import EmbyClient
+from emby_cli.mode_args import resolve_query
 from emby_cli.output import print_error
 from emby_cli.resolve import (
     classify_resolution,
@@ -80,17 +83,44 @@ def play_url(player_cmd: list[str], url: str, *, wait: bool = False) -> int:
 
 def validate_play_args(args: argparse.Namespace) -> str | None:
     """Return an error message if selectors are invalid; else ``None``."""
-    search = (getattr(args, "search", None) or "").strip() or None
+    query, err = resolve_query(args)
+    if err:
+        return err
     item_id = (getattr(args, "id", None) or "").strip() or None
-    if not item_id and not search:
+    if not item_id and not query:
         item_id = (os.environ.get("EMBY_ITEM_ID") or "").strip() or None
     pick_best = bool(getattr(args, "pick_best_item", False))
 
-    if bool(item_id) == bool(search):
-        return "Provide exactly one of --id or --search"
+    if bool(item_id) == bool(query):
+        return "Provide exactly one of --id or QUERY/--search"
     if item_id and pick_best:
-        return "--pick-best-item can only be used with --search"
+        return "--pick-best-item can only be used with QUERY/--search"
     return None
+
+
+def _play_one(
+    client: EmbyClient,
+    item: dict,
+    player_cmd: list[str],
+    *,
+    wait: bool,
+    idx: int | None = None,
+    total: int | None = None,
+) -> int:
+    """Play one resolved item. Return player exit code (0 on detach success)."""
+    item_id = item["Id"]
+    res = classify_resolution(item_video_width(item))
+    year = item.get("ProductionYear", "?")
+    prefix = f"[{idx}/{total}] " if idx is not None and total is not None else ""
+    print()
+    print(f"{prefix}Playing: {item.get('Name')} ({year}) [{item.get('Type')}, {res}]")
+    try:
+        url = client.resolve_direct_stream_url(item_id)
+    except (requests.RequestException, RuntimeError) as exc:
+        print_error(f"resolving stream URL: {exc}", idx=idx, total=total)
+        return 1
+
+    return play_url(player_cmd, url, wait=wait)
 
 
 def cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
@@ -100,23 +130,12 @@ def cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
         print(err)
         sys.exit(1)
 
-    search = (getattr(args, "search", None) or "").strip() or None
+    query, _ = resolve_query(args)
     item_id = (getattr(args, "id", None) or "").strip() or None
-    if not item_id and not search:
+    if not item_id and not query:
         item_id = (os.environ.get("EMBY_ITEM_ID") or "").strip() or None
     pick_best = bool(getattr(args, "pick_best_item", False))
-
-    if item_id:
-        try:
-            item = client.get_item_info(item_id)
-        except Exception as exc:
-            print_error(f"fetching item {item_id}: {exc}")
-            sys.exit(1)
-    else:
-        item = resolve_title_item(client, search, pick_best=pick_best)
-        if item is None:
-            sys.exit(1)
-        item_id = item["Id"]
+    wait = bool(getattr(args, "wait", False))
 
     try:
         player_cmd = find_player(getattr(args, "player", None))
@@ -124,17 +143,36 @@ def cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
         print_error(str(exc))
         sys.exit(1)
 
-    res = classify_resolution(item_video_width(item))
-    year = item.get("ProductionYear", "?")
-    print()
-    print(f"Playing: {item.get('Name')} ({year}) [{item.get('Type')}, {res}]")
-    try:
-        url = client.resolve_direct_stream_url(item_id)
-    except Exception as exc:
-        print_error(f"resolving stream URL: {exc}")
-        sys.exit(1)
+    if item_id:
+        item_ids = [x.strip() for x in item_id.split(",") if x.strip()]
+        total = len(item_ids)
+        errors = 0
+        last_rc = 0
+        for idx, iid in enumerate(item_ids, 1):
+            try:
+                item = client.get_item_info(iid)
+            except (requests.RequestException, RuntimeError) as exc:
+                print_error(f"fetching item {iid}: {exc}", idx=idx, total=total)
+                errors += 1
+                continue
+            rc = _play_one(
+                client,
+                item,
+                player_cmd,
+                wait=wait,
+                idx=idx if total > 1 else None,
+                total=total if total > 1 else None,
+            )
+            if rc != 0:
+                errors += 1
+                last_rc = rc
+        if errors:
+            sys.exit(last_rc if last_rc else 1)
+        return
 
-    wait = bool(getattr(args, "wait", False))
-    rc = play_url(player_cmd, url, wait=wait)
+    item = resolve_title_item(client, query, pick_best=pick_best)
+    if item is None:
+        sys.exit(1)
+    rc = _play_one(client, item, player_cmd, wait=wait)
     if rc != 0:
         sys.exit(rc)

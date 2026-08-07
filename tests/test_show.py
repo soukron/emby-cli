@@ -12,13 +12,14 @@ from emby_cli.commands import show as show_mod
 from emby_cli.commands.show import validate_show_args
 
 
-def test_show_item_query_parses():
+def test_show_item_id_parses():
     args = build_parser().parse_args([
         "--server", "http://x", "--api-key", "k",
-        "show", "--item", "matrix",
+        "show", "--item", "--id", "abc",
     ])
-    assert args.item == "matrix"
+    assert args.item is True
     assert args.library is None
+    assert args.id == "abc"
     assert validate_show_args(args) is None
 
 
@@ -27,16 +28,33 @@ def test_show_library_id_parses():
         "--server", "http://x", "--api-key", "k",
         "show", "--library", "--id", "lib1",
     ])
-    assert args.library == ""
+    assert args.library is True
     assert args.id == "lib1"
     assert validate_show_args(args) is None
 
 
-def test_validate_show_needs_selector():
-    args = argparse.Namespace(item="", library=None, id=None, search=None)
-    assert validate_show_args(args) == (
-        "Provide exactly one of --id or QUERY/--search"
-    )
+def test_show_rejects_query_as_item_value():
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+        # --item no longer takes QUERY; "matrix" would be a stray positional
+        parser.parse_args([
+            "--server", "http://x", "--api-key", "k",
+            "show", "--item", "matrix",
+        ])
+
+
+def test_show_requires_id():
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args([
+            "--server", "http://x", "--api-key", "k",
+            "show", "--item",
+        ])
+
+
+def test_validate_show_needs_id():
+    args = argparse.Namespace(item=True, library=None, id=None)
+    assert validate_show_args(args) == "Provide --id"
 
 
 def test_show_item_by_id(capsys):
@@ -54,7 +72,7 @@ def test_show_item_by_id(capsys):
         "Genres": ["Action", "Sci-Fi"],
         "CommunityRating": 8.7,
     }
-    args = argparse.Namespace(item="", library=None, id="abc", search=None)
+    args = argparse.Namespace(item=True, library=None, id="abc")
     show_mod.cmd_show(client, args)
     out = capsys.readouterr().out
     assert "id: abc" in out
@@ -65,25 +83,28 @@ def test_show_item_by_id(capsys):
     assert "genres: Action, Sci-Fi" in out
     assert "A hacker discovers reality." in out
     client.get_item_info.assert_called_once()
+    client.search_items.assert_not_called()
 
 
-def test_show_item_disambiguates(capsys):
+def test_show_omits_empty_media_section(capsys):
     client = MagicMock()
-    client.search_items.return_value = [
-        {"Id": "1", "Name": "Fast", "Type": "Movie", "ProductionYear": 2001},
-        {"Id": "2", "Name": "Faster", "Type": "Movie", "ProductionYear": 2003},
-    ]
-    args = argparse.Namespace(
-        item="fast", library=None, id=None, search=None,
-    )
-    with pytest.raises(SystemExit) as exc:
-        show_mod.cmd_show(client, args)
-    assert exc.value.code == 1
+    client.get_item_info.return_value = {
+        "Id": "s1",
+        "Name": "Some Series",
+        "Type": "Series",
+        "ProductionYear": 2020,
+        "ChildCount": 5,
+        "Overview": "A show about things.",
+    }
+    args = argparse.Namespace(item=True, library=None, id="s1")
+    show_mod.cmd_show(client, args)
     out = capsys.readouterr().out
-    assert "Multiple matches (2)" in out
-    assert "emby-cli show --item --id 1" in out
-    assert "1" in out and "2" in out
-    client.get_item_info.assert_not_called()
+    assert "type: Series" in out
+    assert "Media" not in out
+    assert "resolution:" not in out
+    assert "size:" not in out
+    assert "runtime:" not in out
+    assert "?" not in out.split("Meta")[0]
 
 
 def test_show_library_recent(capsys):
@@ -106,7 +127,7 @@ def test_show_library_recent(capsys):
         },
     ]
     args = argparse.Namespace(
-        item=None, library="peliculas", id=None, search=None,
+        item=None, library=True, id="lib1",
     )
     show_mod.cmd_show(client, args)
     out = capsys.readouterr().out
@@ -115,7 +136,6 @@ def test_show_library_recent(capsys):
     assert "Recently added" in out
     assert "New Movie" in out
     assert "2024-06-01 12:00:00" in out
-    # both calls filter to playable media types
     for call in client.get_items.call_args_list:
         assert call.kwargs["item_type"] == "Movie,Episode,Audio"
     recent_call = client.get_items.call_args_list[1]
@@ -124,19 +144,15 @@ def test_show_library_recent(capsys):
     assert recent_call.kwargs["limit"] == 10
 
 
-def test_show_library_disambiguates(capsys):
+def test_show_library_id_not_found(capsys):
     client = MagicMock()
     client.get_libraries.return_value = [
         {"Id": "a", "Name": "Movies", "CollectionType": "movies"},
-        {"Id": "b", "Name": "Movies 4K", "CollectionType": "movies"},
     ]
-    client.get_items.return_value = {"TotalRecordCount": 1}
-    args = argparse.Namespace(
-        item=None, library="movies", id=None, search=None,
-    )
+    args = argparse.Namespace(item=None, library=True, id="missing")
     with pytest.raises(SystemExit) as exc:
         show_mod.cmd_show(client, args)
     assert exc.value.code == 1
     out = capsys.readouterr().out
-    assert "Multiple matches (2)" in out
-    assert "emby-cli show --library --id a" in out
+    assert "Library id 'missing' not found" in out
+    assert "Movies" in out

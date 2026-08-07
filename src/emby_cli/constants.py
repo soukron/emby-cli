@@ -12,8 +12,6 @@ DEVICE_NAME = "emby-cli"
 DEFAULT_OUTPUT = "./downloads"
 DOWNLOADABLE_TYPES = ("Movie", "Episode", "Audio", "Video")
 SEARCH_ITEM_TYPES = "Movie,Episode,Audio,Video"
-# Types for `show --item` (includes Series for catalog browsing).
-SHOW_ITEM_TYPES = "Movie,Series,Episode,Audio,Video"
 # Library "recently added" / content counts: playable media only (no Studio, etc.).
 SHOW_LIBRARY_ITEM_TYPES = "Movie,Episode,Audio"
 # Default --count for search; also the soft cap that triggers --media-item --all refusal.

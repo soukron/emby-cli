@@ -64,18 +64,11 @@ emby-cli search --library --all
 
 ### Show details
 
-Inspect one title or one library (counts, metadata, recently added):
-
-```bash
-emby-cli show --item "matrix"
-emby-cli show --item --id 123456
-emby-cli show --library "peliculas"
-```
-
-If several titles match, `show` lists them with IDs so you can pick one:
+Inspect one title or one library by Emby ID (use `search` first if you need to find the ID):
 
 ```bash
 emby-cli show --item --id 123456
+emby-cli show --library --id 614156
 ```
 
 ### Play
@@ -83,12 +76,13 @@ emby-cli show --item --id 123456
 Open a title in an external player (VLC, mpv, IINA, …):
 
 ```bash
-emby-cli play --search "Pelicula (1980)" --pick-best-item
+emby-cli play --item "Pelicula (1980)" --pick-best-item
 emby-cli play --id 123456
+emby-cli play --id 111,222,333
 emby-cli play --id 123456 --player vlc --wait
 ```
 
-Set `EMBY_PLAYER` if the player is not found automatically.
+Set `EMBY_PLAYER` if the player is not found automatically. A comma-separated list of IDs works for `play --id` and `download --item --id` (not for `show` / `search`).
 
 ### Download
 
@@ -96,10 +90,13 @@ Download a single title, a whole library, or a list of titles from a file:
 
 ```bash
 emby-cli download --item --id 123456
+emby-cli download --item --id 111,222,333
 emby-cli download --item "californication S01E01" --pick-best-item
 emby-cli download --library "PELICULAS 4K"
 emby-cli download --from-file titles.txt
 ```
+
+A comma-separated list of IDs (`a,b,c`) is supported for `download --item --id` and `play --id`. `show` and `search` accept a single `--id` each.
 
 Useful options:
 
