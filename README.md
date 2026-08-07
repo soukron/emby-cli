@@ -41,6 +41,13 @@ Use `emby-cli help` for the command list, and `emby-cli <command> -h` for option
 
 ## Everyday use
 
+### Server info
+
+```bash
+emby-cli version    # CLI version (and Emby version when connected)
+emby-cli info       # user, server, library count, content totals
+```
+
 ### Search
 
 Find movies, episodes, and other media — or list libraries:
@@ -70,6 +77,18 @@ If several titles match, `show` lists them with IDs so you can pick one:
 ```bash
 emby-cli show --item --id 123456
 ```
+
+### Play
+
+Open a title in an external player (VLC, mpv, IINA, …):
+
+```bash
+emby-cli play --search "Pelicula (1980)" --pick-best-item
+emby-cli play --id 123456
+emby-cli play --id 123456 --player vlc --wait
+```
+
+Set `EMBY_PLAYER` if the player is not found automatically.
 
 ### Download
 
@@ -101,25 +120,6 @@ Useful options:
 By default, matching is **strict**: a wrong year or several ambiguous results stops with a table of candidates. Add `--pick-best-item` to choose automatically (best quality up to 1080p).
 
 Library downloads match the library **name** (case-insensitive, unique match required).
-
-### Play
-
-Open a title in an external player (VLC, mpv, IINA, …):
-
-```bash
-emby-cli play --search "Pelicula (1980)" --pick-best-item
-emby-cli play --id 123456
-emby-cli play --id 123456 --player vlc --wait
-```
-
-Set `EMBY_PLAYER` if the player is not found automatically.
-
-### Server info
-
-```bash
-emby-cli version    # CLI version (and Emby version when connected)
-emby-cli info       # user, server, library count, content totals
-```
 
 ---
 
@@ -181,6 +181,14 @@ Flags override environment variables. Optional template: `.env.example` (export 
 - Prefer **IDs** (`--id`) when you already have them — no ambiguity.
 - Use **`--dry-run`** before a large library or file-list download.
 - Content totals in `info` can count multiple versions of the same title separately.
+
+---
+
+## Responsible use
+
+This tool talks to Emby over its normal HTTP API. Whether download or playback is allowed depends on **how that server is configured** and on **the terms set by whoever runs it**.
+
+Use `emby-cli` only on servers you are authorized to access, and only in ways that comply with that server’s terms of use, policies, and applicable law. The authors provide the software as-is and are **not responsible** for misuse, for downloads from servers that disallow them, or for any consequences of using the tool.
 
 ---
 

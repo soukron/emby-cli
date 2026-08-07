@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- README rewritten for end users (quick start and everyday workflows; contributor notes moved to the end).
+## 0.4.1
+
+- README rewritten for end users (quick start, everyday workflows, responsible-use disclaimer).
 
 ## 0.4.0
 
