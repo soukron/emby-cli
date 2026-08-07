@@ -54,10 +54,10 @@ dev = [
 emby-cli = "emby_cli.cli:main"
 
 [tool.hatch.build.targets.wheel]
-only-include = ["src/emby_cli"]
+packages = ["src/emby_cli"]
 
-[tool.hatch.build.targets.wheel.force-include]
-"src/emby_cli" = "emby_cli"
+[tool.hatch.build]
+dev-mode-dirs = ["src"]
 
 [tool.hatch.version]
 source = "vcs"
@@ -67,6 +67,7 @@ version-file = "src/emby_cli/_version.py"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 
 [tool.ruff]
 target-version = "py39"
