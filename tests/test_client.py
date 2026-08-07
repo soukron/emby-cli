@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from emby_cli.client import EmbyClient
-from emby_cli.constants import CLIENT_NAME
+from emby_cli.constants import CLIENT_NAME, DOWNLOADABLE_TYPES, SEARCH_ITEM_TYPES
 
 
 def test_session_user_agent_identifies_client():
@@ -16,6 +16,10 @@ def test_session_user_agent_identifies_client():
     assert ua is not None
     assert ua.startswith(f"{CLIENT_NAME}/")
     assert not ua.startswith("python-requests")
+
+
+def test_search_item_types_matches_downloadable_types():
+    assert SEARCH_ITEM_TYPES == ",".join(DOWNLOADABLE_TYPES)
 
 
 def test_server_url_strips_emby_suffix():
