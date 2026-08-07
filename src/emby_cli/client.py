@@ -68,7 +68,7 @@ def _retry_response(
             return response
         except _RetryImmediately:
             if attempt >= max_attempts:
-                raise RuntimeError("Request could not be resumed after retries")
+                raise RuntimeError("Request could not be resumed after retries") from None
             attempt += 1
         except (requests.ConnectionError, requests.Timeout) as exc:
             if attempt >= max_attempts:

@@ -76,4 +76,3 @@ select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/emby_cli/cli.py" = ["E402"]  # warnings.filterwarnings antes de import requests (intencional)
-"src/emby_cli/client.py" = ["B904"]  # fichero gestionado por otro agente
