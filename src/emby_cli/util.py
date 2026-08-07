@@ -7,6 +7,7 @@ from pathlib import Path
 
 from emby_cli.constants import TICKS_PER_SECOND
 
+
 def build_dest_path(item: dict, output_dir: Path) -> Path:
     """Build a destination path that mirrors the Emby library structure."""
     server_path = item.get("Path", "")

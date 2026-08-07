@@ -8,7 +8,11 @@ import sys
 import requests
 
 from emby_cli.client import EmbyClient
-from emby_cli.credentials import resolve_operational_auth, resolve_server, CredentialError
+from emby_cli.credentials import (
+    CredentialError,
+    resolve_operational_auth,
+    resolve_server,
+)
 from emby_cli.version import get_version
 
 

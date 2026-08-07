@@ -45,7 +45,7 @@ class DownloadOpts:
     dry_run: bool
 
     @classmethod
-    def from_args(cls, args: argparse.Namespace) -> "DownloadOpts":
+    def from_args(cls, args: argparse.Namespace) -> DownloadOpts:
         return cls(
             output=Path(args.output),
             throttle=float(getattr(args, "throttle", 0) or 0),

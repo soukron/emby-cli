@@ -8,7 +8,13 @@ import requests
 
 from emby_cli.client import EmbyClient
 from emby_cli.constants import DOWNLOADABLE_TYPES, SHOW_LIBRARY_ITEM_TYPES
-from emby_cli.output import Stats, print_download, print_error, print_section, print_skip
+from emby_cli.output import (
+    Stats,
+    print_download,
+    print_error,
+    print_section,
+    print_skip,
+)
 from emby_cli.resolve import item_label
 from emby_cli.util import (
     build_dest_path,

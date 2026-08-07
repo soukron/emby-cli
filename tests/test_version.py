@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
-from emby_cli.commands.version import cmd_version
 from emby_cli.client import EmbyClient
+from emby_cli.commands.version import cmd_version
 
 
 def test_cmd_version_client_only(capsys, tmp_path, monkeypatch):

@@ -6,8 +6,12 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from emby_cli.constants import SHOW_LIBRARY_ITEM_TYPES
-from emby_cli.download_ops import download_items, find_library, library_rows, match_libraries
-
+from emby_cli.download_ops import (
+    download_items,
+    find_library,
+    library_rows,
+    match_libraries,
+)
 
 LIBS = [
     {"Id": "aaaaaaaa-1111", "Name": "Movies", "CollectionType": "movies"},

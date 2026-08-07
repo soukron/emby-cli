@@ -30,7 +30,6 @@ from emby_cli.credentials import (
     resolve_server,
 )
 
-
 _FORCE_HELP = "Re-download even if local file already matches"
 
 
