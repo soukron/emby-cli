@@ -91,6 +91,18 @@ class EmbyClient:
             parts.append(f'Token="{self.access_token}"')
         return {"X-Emby-Authorization": ", ".join(parts)}
 
+    @staticmethod
+    def _opt_kwargs(
+        timeout: float | None = None,
+        retries: int | None = None,
+    ) -> dict:
+        """Return only request options explicitly supplied by the caller."""
+        return {
+            key: value
+            for key, value in (("timeout", timeout), ("retries", retries))
+            if value is not None
+        }
+
     def _request_with_retry(
         self,
         method: str,
@@ -182,12 +194,7 @@ class EmbyClient:
     ) -> dict:
         """Authenticate by name. Returns the Emby ``User`` object from the response."""
         data = {"Username": username, "Pw": password}
-        kwargs: dict = {}
-        if timeout is not None:
-            kwargs["timeout"] = timeout
-        if retries is not None:
-            kwargs["retries"] = retries
-        resp = self._post(_AUTH_PATH, data, **kwargs)
+        resp = self._post(_AUTH_PATH, data, **self._opt_kwargs(timeout, retries))
         body = resp.json()
         try:
             self.access_token = body["AccessToken"]
@@ -330,12 +337,7 @@ class EmbyClient:
         users may get HTTP 401/403 — prefer :meth:`get_system_info_public`
         as a fallback.
         """
-        kwargs: dict = {}
-        if timeout is not None:
-            kwargs["timeout"] = timeout
-        if retries is not None:
-            kwargs["retries"] = retries
-        return self._get("/System/Info", **kwargs).json()
+        return self._get("/System/Info", **self._opt_kwargs(timeout, retries)).json()
 
     def get_system_info_public(
         self,
@@ -344,12 +346,9 @@ class EmbyClient:
         retries: int | None = None,
     ) -> dict:
         """Public server info (``GET /System/Info/Public``): name, version, addresses."""
-        kwargs: dict = {}
-        if timeout is not None:
-            kwargs["timeout"] = timeout
-        if retries is not None:
-            kwargs["retries"] = retries
-        return self._get("/System/Info/Public", **kwargs).json()
+        return self._get(
+            "/System/Info/Public", **self._opt_kwargs(timeout, retries)
+        ).json()
 
     def get_current_user(
         self,
@@ -363,11 +362,7 @@ class EmbyClient:
         contain…dashes"). Fall back to ``/Users/{user_id}`` when known, else
         the first entry from ``GET /Users``.
         """
-        kwargs: dict = {}
-        if timeout is not None:
-            kwargs["timeout"] = timeout
-        if retries is not None:
-            kwargs["retries"] = retries
+        kwargs = self._opt_kwargs(timeout, retries)
         try:
             return self._get("/Users/Me", **kwargs).json()
         except requests.HTTPError:
@@ -428,12 +423,9 @@ class EmbyClient:
         params: dict = {}
         if user_id:
             params["UserId"] = user_id
-        kwargs: dict = {}
-        if timeout is not None:
-            kwargs["timeout"] = timeout
-        if retries is not None:
-            kwargs["retries"] = retries
-        return self._get("/Items/Counts", params=params or None, **kwargs).json()
+        return self._get(
+            "/Items/Counts", params=params or None, **self._opt_kwargs(timeout, retries)
+        ).json()
 
     # -- browse --------------------------------------------------------------
 
@@ -444,12 +436,7 @@ class EmbyClient:
         retries: int | None = None,
     ) -> list[dict]:
         uid = self.resolve_user_id()
-        kwargs: dict = {}
-        if timeout is not None:
-            kwargs["timeout"] = timeout
-        if retries is not None:
-            kwargs["retries"] = retries
-        resp = self._get(f"/Users/{uid}/Views", **kwargs)
+        resp = self._get(f"/Users/{uid}/Views", **self._opt_kwargs(timeout, retries))
         return resp.json().get("Items", [])
 
     def get_items(
