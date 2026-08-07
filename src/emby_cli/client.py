@@ -6,6 +6,7 @@ import hashlib
 import shutil
 import time
 from pathlib import Path
+from typing import Callable
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import m3u8
@@ -33,6 +34,56 @@ from emby_cli.version import get_version
 
 _DEVICE_ID = hashlib.md5(CLIENT_NAME.encode()).hexdigest()
 _AUTH_PATH = "/Users/AuthenticateByName"
+
+
+class _RetryImmediately(Exception):
+    """Internal signal for a retry that does not need backoff."""
+
+
+class _DownloadAlreadyComplete(Exception):
+    """Internal signal used when a partial download is already complete."""
+
+
+def _retry_response(
+    request: Callable[[], requests.Response],
+    *,
+    max_attempts: int,
+    connection_message: Callable[[int, int, Exception], str],
+    server_message: Callable[[int, int, int], str],
+    retry_http_error: Callable[[requests.Response | None], bool] | None = None,
+    before_status: Callable[[requests.Response], bool] | None = None,
+) -> requests.Response:
+    """Run a request with exponential retry for connection and 5xx errors."""
+    attempt = 1
+    while True:
+        response: requests.Response | None = None
+        try:
+            response = request()
+            if before_status is not None and before_status(response):
+                raise _RetryImmediately
+            response.raise_for_status()
+            return response
+        except _RetryImmediately:
+            if attempt >= max_attempts:
+                raise RuntimeError("Request could not be resumed after retries")
+            attempt += 1
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            if attempt >= max_attempts:
+                raise
+            wait = RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
+            print(connection_message(attempt, max_attempts, exc))
+            time.sleep(wait)
+            attempt += 1
+        except requests.HTTPError:
+            if retry_http_error is not None and retry_http_error(response):
+                continue
+            if response is not None and response.status_code >= 500 and attempt < max_attempts:
+                wait = RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
+                print(server_message(response.status_code, attempt, max_attempts))
+                time.sleep(wait)
+                attempt += 1
+                continue
+            raise
 
 
 def _client_version() -> str:
@@ -113,38 +164,30 @@ class EmbyClient:
     ) -> requests.Response:
         url = self._url(path)
         max_attempts = MAX_RETRIES if retries is None else max(1, retries)
-        resp = None
-        attempt = 1
-        while True:
-            try:
-                headers = dict(kwargs.get("headers") or {})
-                headers.update(self._auth_header())
-                req_kwargs = {**kwargs, "headers": headers}
-                resp = self.session.request(method, url, **req_kwargs)
-                resp.raise_for_status()
-                return resp
-            except (requests.ConnectionError, requests.Timeout) as exc:
-                if attempt >= max_attempts:
-                    raise
-                wait = RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
-                print(f"  Connection error (attempt {attempt}/{max_attempts}), retrying in {wait}s: {exc}")
-                time.sleep(wait)
-                attempt += 1
-            except requests.HTTPError:
-                if (
-                    resp is not None
-                    and resp.status_code == 401
-                    and path != _AUTH_PATH
-                    and self._try_reauthenticate()
-                ):
-                    continue
-                if resp is not None and resp.status_code >= 500 and attempt < max_attempts:
-                    wait = RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
-                    print(f"  Server error {resp.status_code} (attempt {attempt}/{max_attempts}), retrying in {wait}s")
-                    time.sleep(wait)
-                    attempt += 1
-                    continue
-                raise
+
+        def request() -> requests.Response:
+            headers = dict(kwargs.get("headers") or {})
+            headers.update(self._auth_header())
+            return self.session.request(method, url, **{**kwargs, "headers": headers})
+
+        return _retry_response(
+            request,
+            max_attempts=max_attempts,
+            connection_message=lambda attempt, total, exc: (
+                f"  Connection error (attempt {attempt}/{total}), retrying in "
+                f"{RETRY_BACKOFF_BASE * (2 ** (attempt - 1))}s: {exc}"
+            ),
+            server_message=lambda status, attempt, total: (
+                f"  Server error {status} (attempt {attempt}/{total}), retrying in "
+                f"{RETRY_BACKOFF_BASE * (2 ** (attempt - 1))}s"
+            ),
+            retry_http_error=lambda response: bool(
+                response is not None
+                and response.status_code == 401
+                and path != _AUTH_PATH
+                and self._try_reauthenticate()
+            ),
+        )
 
     def _get(
         self,
@@ -651,44 +694,43 @@ class EmbyClient:
             existing = tmp_path.stat().st_size
             headers["Range"] = f"bytes={existing}-"
 
-        resp = None
-        for attempt in range(1, MAX_RETRIES + 1):
-            try:
-                resp = self.session.get(url, headers=headers, stream=True, timeout=30)
-                if resp.status_code == 416:
-                    # Range not satisfiable: complete only if size matches expectation
-                    if tmp_path.exists():
-                        size = tmp_path.stat().st_size
-                        if expected_size is not None and size == expected_size:
-                            tmp_path.rename(dest_path)
-                            return dest_path
-                        if expected_size is None and size > 0 and dest_path.exists() is False:
-                            # Without Size, treat equal-to-dest or drop corrupt part
-                            pass
-                        print(f"  Resume rejected (416); restarting download "
-                              f"(part={size}, expected={expected_size})")
-                        tmp_path.unlink(missing_ok=True)
-                        existing = 0
-                        headers = dict(self._auth_header())
-                        continue
-                    raise RuntimeError(
-                        f"Server returned 416 with no partial file for {dest_path.name}"
-                    )
-                resp.raise_for_status()
-                break
-            except (requests.ConnectionError, requests.Timeout) as exc:
-                if attempt == MAX_RETRIES:
-                    raise
-                wait = RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
-                print(f"  Connection error (attempt {attempt}/{MAX_RETRIES}), retrying in {wait}s: {exc}")
-                time.sleep(wait)
-            except requests.HTTPError:
-                if resp is not None and resp.status_code >= 500 and attempt < MAX_RETRIES:
-                    wait = RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
-                    print(f"  Server error {resp.status_code} (attempt {attempt}/{MAX_RETRIES}), retrying in {wait}s")
-                    time.sleep(wait)
-                else:
-                    raise
+        def handle_resume_response(response: requests.Response) -> bool:
+            nonlocal existing, headers
+            if response.status_code != 416:
+                return False
+            if not tmp_path.exists():
+                raise RuntimeError(
+                    f"Server returned 416 with no partial file for {dest_path.name}"
+                )
+            size = tmp_path.stat().st_size
+            if expected_size is not None and size == expected_size:
+                tmp_path.rename(dest_path)
+                raise _DownloadAlreadyComplete
+            print(
+                f"  Resume rejected (416); restarting download "
+                f"(part={size}, expected={expected_size})"
+            )
+            tmp_path.unlink(missing_ok=True)
+            existing = 0
+            headers = dict(self._auth_header())
+            return True
+
+        try:
+            resp = _retry_response(
+                lambda: self.session.get(url, headers=headers, stream=True, timeout=30),
+                max_attempts=MAX_RETRIES,
+                connection_message=lambda attempt, total, exc: (
+                    f"  Connection error (attempt {attempt}/{total}), retrying in "
+                    f"{RETRY_BACKOFF_BASE * (2 ** (attempt - 1))}s: {exc}"
+                ),
+                server_message=lambda status, attempt, total: (
+                    f"  Server error {status} (attempt {attempt}/{total}), retrying in "
+                    f"{RETRY_BACKOFF_BASE * (2 ** (attempt - 1))}s"
+                ),
+                before_status=handle_resume_response,
+            )
+        except _DownloadAlreadyComplete:
+            return dest_path
 
         mode = "ab" if existing and resp.status_code == 206 else "wb"
         if mode == "wb":
@@ -773,30 +815,23 @@ class EmbyClient:
 
     def _download_segment(self, url: str, dest: Path) -> None:
         """Download a single HLS segment with retry."""
-        resp = None
-        for attempt in range(1, MAX_RETRIES + 1):
-            try:
-                resp = self.session.get(
-                    url, headers=self._auth_header(), stream=True, timeout=30,
-                )
-                resp.raise_for_status()
-                with open(dest, "wb") as f:
-                    for data in resp.iter_content(chunk_size=DEFAULT_CHUNK):
-                        f.write(data)
-                return
-            except (requests.ConnectionError, requests.Timeout) as exc:
-                if attempt == MAX_RETRIES:
-                    raise
-                wait = RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
-                print(f"    Segment retry ({attempt}/{MAX_RETRIES}), waiting {wait}s")
-                time.sleep(wait)
-            except requests.HTTPError:
-                if resp is not None and resp.status_code >= 500 and attempt < MAX_RETRIES:
-                    wait = RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
-                    print(f"    Segment error {resp.status_code} ({attempt}/{MAX_RETRIES}), waiting {wait}s")
-                    time.sleep(wait)
-                else:
-                    raise
+        resp = _retry_response(
+            lambda: self.session.get(
+                url, headers=self._auth_header(), stream=True, timeout=30,
+            ),
+            max_attempts=MAX_RETRIES,
+            connection_message=lambda attempt, total, _exc: (
+                f"    Segment retry ({attempt}/{total}), waiting "
+                f"{RETRY_BACKOFF_BASE * (2 ** (attempt - 1))}s"
+            ),
+            server_message=lambda status, attempt, total: (
+                f"    Segment error {status} ({attempt}/{total}), waiting "
+                f"{RETRY_BACKOFF_BASE * (2 ** (attempt - 1))}s"
+            ),
+        )
+        with open(dest, "wb") as f:
+            for data in resp.iter_content(chunk_size=DEFAULT_CHUNK):
+                f.write(data)
 
     def download_item_hls(self, item_id: str, dest_path: Path, throttle: float = 0) -> Path:
         """Download via HLS chunks (like a web player) and remux to mkv."""
