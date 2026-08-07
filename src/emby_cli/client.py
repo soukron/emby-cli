@@ -633,17 +633,7 @@ class EmbyClient:
                 qs["api_key"] = self.access_token
             direct = f"/Videos/{item_id}/original.{container}?{urlencode(qs)}"
 
-        if direct.startswith("http"):
-            url = direct
-        else:
-            if not direct.startswith("/"):
-                direct = "/" + direct
-            if direct.lower().startswith("/emby/"):
-                url = f"{self.server_url}{direct}"
-            else:
-                url = f"{self.server_url}/emby{direct}"
-
-        return self._ensure_api_key(url, self.access_token)
+        return self._ensure_api_key(self._url(direct), self.access_token)
 
     # -- download ------------------------------------------------------------
 

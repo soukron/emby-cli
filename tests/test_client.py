@@ -24,6 +24,18 @@ def test_server_url_strips_emby_suffix():
     assert c._url("/Users/Me") == "http://host:8096/emby/Users/Me"
 
 
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("Videos/1/original.mp4", "http://host:8096/emby/Videos/1/original.mp4"),
+        ("/emby/Videos/1/original.mp4", "http://host:8096/emby/Videos/1/original.mp4"),
+        ("https://cdn.example/original.mp4", "https://cdn.example/original.mp4"),
+    ],
+)
+def test_url_normalizes_direct_stream_path(path, expected):
+    assert EmbyClient("http://host:8096")._url(path) == expected
+
+
 def test_ensure_api_key_appends_when_missing():
     url = EmbyClient._ensure_api_key(
         "http://host/emby/Videos/1/original.mkv?DeviceId=x",
