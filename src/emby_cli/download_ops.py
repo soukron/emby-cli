@@ -98,6 +98,42 @@ def download_one_item(
         return "error"
 
 
+def download_items(
+    client: EmbyClient,
+    items: list[dict],
+    output: Path,
+    *,
+    method: str,
+    force: bool,
+    throttle: float,
+    dry_run: bool = False,
+    show_single_progress: bool = False,
+) -> Stats:
+    """Download *items* and accumulate their results."""
+    stats = Stats()
+    total = len(items)
+    show_progress = total > 1 or show_single_progress
+    for idx, item in enumerate(items, 1):
+        result = download_one_item(
+            client,
+            item,
+            output,
+            method=method,
+            force=force,
+            throttle=throttle,
+            idx=idx if show_progress else None,
+            total=total if show_progress else None,
+            dry_run=dry_run,
+        )
+        if result == "ok":
+            stats.ok += 1
+        elif result == "skip":
+            stats.skip += 1
+        elif result == "error":
+            stats.error += 1
+    return stats
+
+
 def match_libraries(libraries: list[dict], query: str) -> list[dict]:
     """Return libraries whose Name contains *query* (case-insensitive substring)."""
     needle = (query or "").lower()
@@ -179,7 +215,6 @@ def download_library_items(
     dry_run: bool = False,
 ) -> Stats:
     """Download all downloadable items in one library view."""
-    stats = Stats()
     if show_section:
         print_section(f"Library: {library['Name']}")
 
@@ -187,23 +222,13 @@ def download_library_items(
     targets = [i for i in items if i.get("Type") in DOWNLOADABLE_TYPES]
     print(f"Found {len(targets)} items in '{library['Name']}'")
 
-    for idx, item in enumerate(targets, 1):
-        result = download_one_item(
-            client,
-            item,
-            output,
-            method=method,
-            force=force,
-            throttle=throttle,
-            idx=idx,
-            total=len(targets),
-            dry_run=dry_run,
-        )
-        if result == "ok":
-            stats.ok += 1
-        elif result == "skip":
-            stats.skip += 1
-        elif result == "error":
-            stats.error += 1
-
-    return stats
+    return download_items(
+        client,
+        targets,
+        output,
+        method=method,
+        force=force,
+        throttle=throttle,
+        dry_run=dry_run,
+        show_single_progress=True,
+    )

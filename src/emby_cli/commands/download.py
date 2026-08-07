@@ -13,6 +13,7 @@ import requests
 
 from emby_cli.client import EmbyClient
 from emby_cli.download_ops import (
+    download_items,
     download_library_items,
     download_one_item,
     find_library,
@@ -51,39 +52,6 @@ class DownloadOpts:
             method=getattr(args, "method", "download"),
             dry_run=bool(getattr(args, "dry_run", False)),
         )
-
-
-def _download_items(
-    client: EmbyClient,
-    items: list[dict],
-    *,
-    output: Path,
-    method: str,
-    force: bool,
-    throttle: float,
-    dry_run: bool,
-) -> Stats:
-    stats = Stats()
-    total = len(items)
-    for idx, item in enumerate(items, 1):
-        result = download_one_item(
-            client,
-            item,
-            output,
-            method=method,
-            force=force,
-            throttle=throttle,
-            idx=idx if total > 1 else None,
-            total=total if total > 1 else None,
-            dry_run=dry_run,
-        )
-        if result == "ok":
-            stats.ok += 1
-        elif result == "skip":
-            stats.skip += 1
-        elif result == "error":
-            stats.error += 1
-    return stats
 
 
 def validate_download_args(args: argparse.Namespace) -> str | None:
@@ -139,10 +107,10 @@ def _cmd_download_item(client: EmbyClient, args: argparse.Namespace) -> None:
                 print_error(f"fetching item {iid}: {exc}", idx=idx, total=total)
                 stats.error += 1
         if items:
-            got = _download_items(
+            got = download_items(
                 client,
                 items,
-                output=opts.output,
+                opts.output,
                 method=opts.method,
                 force=args.force,
                 throttle=opts.throttle,
@@ -163,10 +131,10 @@ def _cmd_download_item(client: EmbyClient, args: argparse.Namespace) -> None:
     if items is None:
         sys.exit(1)
 
-    stats = _download_items(
+    stats = download_items(
         client,
         items,
-        output=opts.output,
+        opts.output,
         method=opts.method,
         force=args.force,
         throttle=opts.throttle,
