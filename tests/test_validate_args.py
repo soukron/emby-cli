@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from emby_cli.cli import main
-from emby_cli.commands.download import validate_download_args
+from emby_cli.commands.download import DownloadOpts, validate_download_args
 from emby_cli.commands.play import validate_play_args
 from emby_cli.commands.search import validate_search_args
 
@@ -91,6 +91,15 @@ def test_validate_download_media_item_needs_selector(monkeypatch):
     assert validate_download_args(args) == (
         "With --item, provide exactly one of --id or QUERY/--search"
     )
+
+
+def test_download_opts_from_args_uses_defaults_and_normalizes_values():
+    opts = DownloadOpts.from_args(argparse.Namespace(output="backup", throttle=None))
+
+    assert str(opts.output) == "backup"
+    assert opts.throttle == 0
+    assert opts.method == "download"
+    assert opts.dry_run is False
 
 
 def test_validate_download_item_embedded_ok():

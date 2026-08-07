@@ -7,6 +7,7 @@ import os
 import re
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import requests
@@ -27,6 +28,25 @@ from emby_cli.resolve import (
     resolve_title_items,
 )
 from emby_cli.util import format_duration
+
+
+@dataclass(frozen=True)
+class DownloadOpts:
+    """Download settings shared by every download mode."""
+
+    output: Path
+    throttle: float
+    method: str
+    dry_run: bool
+
+    @classmethod
+    def from_args(cls, args: argparse.Namespace) -> "DownloadOpts":
+        return cls(
+            output=Path(args.output),
+            throttle=float(getattr(args, "throttle", 0) or 0),
+            method=getattr(args, "method", "download"),
+            dry_run=bool(getattr(args, "dry_run", False)),
+        )
 
 
 def _download_items(
@@ -97,17 +117,14 @@ def validate_download_args(args: argparse.Namespace) -> str | None:
 
 
 def _cmd_download_item(client: EmbyClient, args: argparse.Namespace) -> None:
-    output = Path(args.output)
-    throttle = float(getattr(args, "throttle", 0) or 0)
-    method = getattr(args, "method", "download")
-    dry_run = bool(getattr(args, "dry_run", False))
+    opts = DownloadOpts.from_args(args)
     pick_best = bool(getattr(args, "pick_best_item", False))
     search, _ = resolve_query(args)
     item_id = (getattr(args, "id", None) or "").strip() or None
     if not item_id and not search:
         item_id = (os.environ.get("EMBY_ITEM_ID") or "").strip() or None
 
-    if dry_run:
+    if opts.dry_run:
         print("*** DRY RUN — no files will be downloaded ***\n")
 
     if item_id:
@@ -125,11 +142,11 @@ def _cmd_download_item(client: EmbyClient, args: argparse.Namespace) -> None:
             got = _download_items(
                 client,
                 items,
-                output=output,
-                method=method,
+                output=opts.output,
+                method=opts.method,
                 force=args.force,
-                throttle=throttle,
-                dry_run=dry_run,
+                throttle=opts.throttle,
+                dry_run=opts.dry_run,
             )
             stats.ok += got.ok
             stats.skip += got.skip
@@ -149,25 +166,22 @@ def _cmd_download_item(client: EmbyClient, args: argparse.Namespace) -> None:
     stats = _download_items(
         client,
         items,
-        output=output,
-        method=method,
+        output=opts.output,
+        method=opts.method,
         force=args.force,
-        throttle=throttle,
-        dry_run=dry_run,
+        throttle=opts.throttle,
+        dry_run=opts.dry_run,
     )
     print_done(stats)
     sys.exit(stats.exit_code())
 
 
 def _cmd_download_library(client: EmbyClient, args: argparse.Namespace) -> None:
-    output = Path(args.output)
-    throttle = float(getattr(args, "throttle", 0) or 0)
-    method = getattr(args, "method", "download")
-    dry_run = bool(getattr(args, "dry_run", False))
+    opts = DownloadOpts.from_args(args)
     library_id = (getattr(args, "id", None) or "").strip() or None
     search, _ = resolve_query(args)
 
-    if dry_run:
+    if opts.dry_run:
         print("*** DRY RUN — no files will be downloaded ***\n")
 
     libraries = client.get_libraries()
@@ -196,25 +210,22 @@ def _cmd_download_library(client: EmbyClient, args: argparse.Namespace) -> None:
     stats = download_library_items(
         client,
         lib,
-        output,
-        method=method,
+        opts.output,
+        method=opts.method,
         force=args.force,
-        throttle=throttle,
+        throttle=opts.throttle,
         show_section=True,
-        dry_run=dry_run,
+        dry_run=opts.dry_run,
     )
     print_done(stats)
     sys.exit(stats.exit_code())
 
 
 def _cmd_download_from_file(client: EmbyClient, args: argparse.Namespace) -> None:
-    output = Path(args.output)
-    throttle = float(getattr(args, "throttle", 0) or 0)
-    method = getattr(args, "method", "download")
-    dry_run = bool(getattr(args, "dry_run", False))
+    opts = DownloadOpts.from_args(args)
     pick_best = bool(getattr(args, "pick_best_item", False))
 
-    if dry_run:
+    if opts.dry_run:
         print("*** DRY RUN — no files will be downloaded ***\n")
 
     file_path = Path(args.from_file)
@@ -255,11 +266,11 @@ def _cmd_download_from_file(client: EmbyClient, args: argparse.Namespace) -> Non
             result = download_one_item(
                 client,
                 item,
-                output,
-                method=method,
+                opts.output,
+                method=opts.method,
                 force=args.force,
-                throttle=throttle,
-                dry_run=dry_run,
+                throttle=opts.throttle,
+                dry_run=opts.dry_run,
             )
             elapsed = time.monotonic() - line_t0
             status_map = {
@@ -297,11 +308,11 @@ def _cmd_download_from_file(client: EmbyClient, args: argparse.Namespace) -> Non
             result = download_one_item(
                 client,
                 item,
-                output,
-                method=method,
+                opts.output,
+                method=opts.method,
                 force=args.force,
-                throttle=throttle,
-                dry_run=dry_run,
+                throttle=opts.throttle,
+                dry_run=opts.dry_run,
             )
             if result == "ok":
                 line_ok += 1
@@ -314,7 +325,7 @@ def _cmd_download_from_file(client: EmbyClient, args: argparse.Namespace) -> Non
                 totals.error += 1
 
         elapsed = time.monotonic() - line_t0
-        if dry_run:
+        if opts.dry_run:
             status = "DRY RUN"
             detail = f"{len(items)} items"
         elif line_err and line_ok:
