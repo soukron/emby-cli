@@ -112,7 +112,6 @@ class EmbyClient:
         self.use_auth_cache = use_auth_cache
         self._username: str | None = None
         self._password: str | None = None
-        self._reauth_attempted = False
         self.session = requests.Session()
         ver = _client_version()
         self.session.headers.update({
@@ -167,11 +166,24 @@ class EmbyClient:
     ) -> requests.Response:
         url = self._url(path)
         max_attempts = MAX_RETRIES if retries is None else max(1, retries)
+        reauth_attempted = False
 
         def request() -> requests.Response:
             headers = dict(kwargs.get("headers") or {})
             headers.update(self._auth_header())
             return self.session.request(method, url, **{**kwargs, "headers": headers})
+
+        def retry_after_reauth(response: requests.Response | None) -> bool:
+            nonlocal reauth_attempted
+            if (
+                response is None
+                or response.status_code != 401
+                or path == _AUTH_PATH
+                or reauth_attempted
+            ):
+                return False
+            reauth_attempted = True
+            return self._try_reauthenticate()
 
         return _retry_response(
             request,
@@ -184,12 +196,7 @@ class EmbyClient:
                 f"  Server error {status} (attempt {attempt}/{total}), retrying in "
                 f"{RETRY_BACKOFF_BASE * (2 ** (attempt - 1))}s"
             ),
-            retry_http_error=lambda response: bool(
-                response is not None
-                and response.status_code == 401
-                and path != _AUTH_PATH
-                and self._try_reauthenticate()
-            ),
+            retry_http_error=retry_after_reauth,
         )
 
     def _get(
@@ -285,14 +292,12 @@ class EmbyClient:
                 "No cached session; provide --username / EMBY_USERNAME "
                 "or run `emby-cli login`"
             )
-        user = self.authenticate(
+        return self.authenticate(
             username,
             password if password is not None else "",
             timeout=timeout,
             retries=retries,
         )
-        self._reauth_attempted = False
-        return user
 
     def _try_restore_auth_cache(self, username: str | None = None) -> bool:
         if not self.use_auth_cache or self.api_key:
@@ -303,7 +308,6 @@ class EmbyClient:
         self.access_token = entry.access_token
         self.user_id = entry.user_id
         self._username = entry.username
-        self._reauth_attempted = False
         return True
 
     def _persist_auth_cache(self) -> None:
@@ -327,11 +331,8 @@ class EmbyClient:
         self.user_id = None
 
     def _try_reauthenticate(self) -> bool:
-        if self._reauth_attempted:
-            return False
         if self._username is None or self._password is None:
             return False
-        self._reauth_attempted = True
         self._invalidate_cached_session()
         self.authenticate(self._username, self._password)
         return True

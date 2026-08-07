@@ -279,6 +279,35 @@ class TestHttp401Reauth:
         assert exc_info.value.response.status_code == 401
         assert req.call_count == 3
 
+    def test_next_request_can_reauthenticate_again(self):
+        """The one-reauth guard is scoped to each top-level request."""
+        c = self._authed_client()
+
+        with (
+            patch.object(
+                c.session,
+                "request",
+                side_effect=[
+                    _resp(401),
+                    _resp(200, json_data={"AccessToken": "token-1", "User": {"Id": "uid"}}),
+                    _resp(200),
+                    _resp(401),
+                    _resp(200, json_data={"AccessToken": "token-2", "User": {"Id": "uid"}}),
+                    _resp(200),
+                ],
+            ) as req,
+            patch("emby_cli.client.time.sleep") as sleep,
+            patch("emby_cli.client.clear_auth_cache"),
+        ):
+            first = c._get("/System/Info")
+            second = c._get("/Items")
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert c.access_token == "token-2"
+        assert req.call_count == 6
+        sleep.assert_not_called()
+
     def test_no_reauth_without_password(self):
         c = EmbyClient("http://host:8096", use_auth_cache=False)
         c._username = "user"
