@@ -49,4 +49,70 @@ def test_item_all_lists_when_within_limit(capsys):
     search_mod.cmd_search(client, args)
     out = capsys.readouterr().out
     assert "Total: 2" in out
+    assert "out of" not in out
     client.get_all_items.assert_called_once()
+
+
+def test_item_query_shows_out_of_when_truncated(capsys):
+    client = MagicMock()
+    client.search_items_result.return_value = (
+        [
+            {"Id": "1", "Name": "A", "Type": "Movie", "ProductionYear": 1999},
+            {"Id": "2", "Name": "B", "Type": "Movie", "ProductionYear": 2003},
+        ],
+        14,
+    )
+    args = MagicMock(
+        count=2,
+        id=None,
+        search=None,
+        all=False,
+        item="matrix",
+        library=None,
+    )
+    search_mod.cmd_search(client, args)
+    out = capsys.readouterr().out
+    assert "Total: 2 (out of 14)" in out
+    client.search_items_result.assert_called_once()
+
+
+def test_item_query_plain_total_when_complete(capsys):
+    client = MagicMock()
+    client.search_items_result.return_value = (
+        [
+            {"Id": "1", "Name": "A", "Type": "Movie", "ProductionYear": 1999},
+        ],
+        1,
+    )
+    args = MagicMock(
+        count=30,
+        id=None,
+        search=None,
+        all=False,
+        item="unique",
+        library=None,
+    )
+    search_mod.cmd_search(client, args)
+    out = capsys.readouterr().out
+    assert "Total: 1" in out
+    assert "out of" not in out
+
+
+def test_library_shows_out_of_when_truncated(capsys):
+    client = MagicMock()
+    client.get_libraries.return_value = [
+        {"Id": f"{i}", "Name": f"Lib{i}", "CollectionType": "movies"}
+        for i in range(5)
+    ]
+    client.get_items.return_value = {"TotalRecordCount": 0}
+    args = MagicMock(
+        count=2,
+        id=None,
+        search=None,
+        all=True,
+        item=None,
+        library="",
+    )
+    search_mod.cmd_search(client, args)
+    out = capsys.readouterr().out
+    assert "Total: 2 (out of 5)" in out

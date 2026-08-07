@@ -19,6 +19,15 @@ from emby_cli.resolve import (
 )
 
 
+def _print_total(shown: int, available: int | None = None) -> None:
+    """Print ``Total: N`` or ``Total: N (out of M)`` when truncated."""
+    if available is not None and available > shown:
+        print(f"\nTotal: {shown} (out of {available})")
+    else:
+        print(f"\nTotal: {shown}")
+    print()
+
+
 def _print_libraries(
     client: EmbyClient,
     libraries: list[dict],
@@ -28,10 +37,10 @@ def _print_libraries(
     if not libraries:
         print("No results.")
         return
+    available = len(libraries)
     shown = sort_for_display(libraries)[:count]
     print_library_choices(library_rows(client, shown))
-    print(f"\nTotal: {len(shown)}")
-    print()
+    _print_total(len(shown), available)
 
 
 def _selector_count(args: argparse.Namespace, query: str | None) -> int:
@@ -106,8 +115,7 @@ def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
             return
         items = client.get_all_items(item_type=SEARCH_ITEM_TYPES)
         print_item_choices(items)
-        print(f"\nTotal: {len(items)}")
-        print()
+        _print_total(len(items))
         return
 
     if item_id:
@@ -117,11 +125,10 @@ def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
             print(f"error: fetching item {item_id}: {exc}", file=sys.stderr)
             sys.exit(1)
         print_item_choices([item])
-        print("\nTotal: 1")
-        print()
+        _print_total(1)
         return
 
-    items = client.search_items(
+    items, available = client.search_items_result(
         query,
         item_types=SEARCH_ITEM_TYPES,
         limit=count,
@@ -130,5 +137,4 @@ def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
         print("No results.")
         return
     print_item_choices(items)
-    print(f"\nTotal: {len(items)}")
-    print()
+    _print_total(len(items), available)

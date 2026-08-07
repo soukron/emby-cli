@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1
+
+- Set HTTP `User-Agent` to `emby-cli/<version>` (clear client identity; replaces the default `python-requests` UA).
+- `search`: when results are capped by `--count`, print `Total: N (out of M)`.
+- README: example tweaks and docs polish.
+
 ## 0.5.0
 
 Breaking:

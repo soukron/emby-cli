@@ -32,7 +32,7 @@ emby-cli info
 
 ```bash
 emby-cli search --item "matrix"
-emby-cli download --item "matrix" --pick-best-item
+emby-cli download --item "matrix (1999)" --pick-best-item
 ```
 
 Use `emby-cli help` for the command list, and `emby-cli <command> -h` for options.
@@ -54,7 +54,7 @@ Find movies, episodes, and other media — or list libraries:
 
 ```bash
 emby-cli search --item "fast and furious"
-emby-cli search --item "fast and furious" --count 50
+emby-cli search --item "fast and furious" --count 5
 emby-cli search --item --id 123456
 emby-cli search --library "peliculas"
 emby-cli search --library --all
@@ -76,7 +76,7 @@ emby-cli show --library --id 614156
 Open a title in an external player (VLC, mpv, IINA, …):
 
 ```bash
-emby-cli play --item "Pelicula (1980)" --pick-best-item
+emby-cli play --item "matrix (1999)" --pick-best-item
 emby-cli play --id 123456
 emby-cli play --id 111,222,333
 emby-cli play --id 123456 --player vlc --wait
@@ -91,8 +91,8 @@ Download a single title, a whole library, or a list of titles from a file:
 ```bash
 emby-cli download --item --id 123456
 emby-cli download --item --id 111,222,333
-emby-cli download --item "californication S01E01" --pick-best-item
-emby-cli download --library "PELICULAS 4K"
+emby-cli download --item "breaking bad S01E01" --pick-best-item
+emby-cli download --library "peliculas 4k"
 emby-cli download --from-file titles.txt
 ```
 
@@ -112,7 +112,7 @@ Useful options:
 
 - `Movie (2010)`
 - `Show S01E05`
-- `Show S01` — whole season (with `--item` or `--from-file`)
+- `Show S01` — whole season
 
 By default, matching is **strict**: a wrong year or several ambiguous results stops with a table of candidates. Add `--pick-best-item` to choose automatically (best quality up to 1080p).
 
@@ -122,11 +122,11 @@ Library downloads match the library **name** (case-insensitive, unique match req
 
 ## Logging in and switching servers
 
-| Approach | When to use |
-|----------|-------------|
-| `emby-cli login` | Recommended — saves a session and remembers the server |
-| API key | `--api-key` / `EMBY_API_KEY` (keys are not stored by `login`) |
-| Flags / env | `--server`, `--username`, `--password` or `EMBY_*` for one-off use |
+| Approach         | When to use                                                        |
+| ---------------- | ------------------------------------------------------------------ |
+| `emby-cli login` | Recommended — saves a session and remembers the server             |
+| API key          | `--api-key` / `EMBY_API_KEY` (keys are not stored by `login`)      |
+| Flags / env      | `--server`, `--username`, `--password` or `EMBY_*` for one-off use |
 
 Manage saved servers:
 
@@ -146,11 +146,11 @@ Sessions live under `~/.cache/emby-cli/auth.json` (override with `EMBY_CACHE_DIR
 
 Choose with `-m` / `EMBY_METHOD`:
 
-| Method | Best for |
-|--------|----------|
-| `download` (default) | Normal file download from Emby |
-| `stream` | Direct stream URL (similar to Emby Web) |
-| `hls` | HLS remux to `.mkv` |
+| Method               | Best for                                |
+| -------------------- | --------------------------------------- |
+| `download` (default) | Normal file download from Emby          |
+| `stream`             | Direct stream URL (similar to Emby Web) |
+| `hls`                | HLS remux to `.mkv`                     |
 
 ---
 
@@ -158,17 +158,17 @@ Choose with `-m` / `EMBY_METHOD`:
 
 Flags override environment variables. Optional template: `.env.example` (export the vars yourself — the CLI does not load `.env` files).
 
-| Variable | Description |
-|----------|-------------|
-| `EMBY_SERVER` | Server URL |
-| `EMBY_API_KEY` | API key |
-| `EMBY_USERNAME` / `EMBY_PASSWORD` | Username / password |
-| `EMBY_OUTPUT` | Download directory (default `./downloads`) |
-| `EMBY_METHOD` | `download`, `stream`, or `hls` |
-| `EMBY_PLAYER` | External player command or path |
-| `EMBY_ITEM_ID` | Default `--id` for item download / play |
-| `EMBY_CACHE_DIR` | Credentials directory (default `~/.cache/emby-cli`) |
-| `EMBY_NO_AUTH_CACHE` | `1` = disable session cache |
+| Variable                          | Description                                         |
+| --------------------------------- | --------------------------------------------------- |
+| `EMBY_SERVER`                     | Server URL                                          |
+| `EMBY_API_KEY`                    | API key                                             |
+| `EMBY_USERNAME` / `EMBY_PASSWORD` | Username / password                                 |
+| `EMBY_OUTPUT`                     | Download directory (default `./downloads`)          |
+| `EMBY_METHOD`                     | `download`, `stream`, or `hls`                      |
+| `EMBY_PLAYER`                     | External player command or path                     |
+| `EMBY_ITEM_ID`                    | Default `--id` for item download / play             |
+| `EMBY_CACHE_DIR`                  | Credentials directory (default `~/.cache/emby-cli`) |
+| `EMBY_NO_AUTH_CACHE`              | `1` = disable session cache                         |
 
 ---
 
@@ -176,16 +176,8 @@ Flags override environment variables. Optional template: `.env.example` (export 
 
 - Prefer **search → show → download** when you are unsure of the exact title.
 - Prefer **IDs** (`--id`) when you already have them — no ambiguity.
-- Use **`--dry-run`** before a large library or file-list download.
+- Use `--dry-run` before a large library or file-list download.
 - Content totals in `info` can count multiple versions of the same title separately.
-
----
-
-## Responsible use
-
-This tool talks to Emby over its normal HTTP API. Whether download or playback is allowed depends on **how that server is configured** and on **the terms set by whoever runs it**.
-
-Use `emby-cli` only on servers you are authorized to access, and only in ways that comply with that server’s terms of use, policies, and applicable law. The authors provide the software as-is and are **not responsible** for misuse, for downloads from servers that disallow them, or for any consequences of using the tool.
 
 ---
 
@@ -198,7 +190,17 @@ pytest -q
 python -m build && twine check dist/*
 ```
 
-Releases: tag `vX.Y.Z` and push (or create a GitHub Release). CI publishes to PyPI via Trusted Publisher.
+Releases: tag `vX.Y.Z` and push. CI publishes to PyPI via Trusted Publisher.
+
+---
+
+## Responsible use
+
+This tool talks to Emby over its normal HTTP API. Whether download or playback is allowed depends on **how that server is configured** and on **the terms set by whoever runs it**.
+
+Use `emby-cli` only on servers you are authorized to access, and only in ways that comply with that server’s terms of use, policies, and applicable law. The authors provide the software as-is and are **not responsible** for misuse, for downloads from servers that disallow them, or for any consequences of using the tool.
+
+---
 
 ## License
 

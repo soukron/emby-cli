@@ -62,6 +62,7 @@ class EmbyClient:
         self.session = requests.Session()
         ver = _client_version()
         self.session.headers.update({
+            "User-Agent": f"{CLIENT_NAME}/{ver}",
             "X-Emby-Client": CLIENT_NAME,
             "X-Emby-Device-Name": DEVICE_NAME,
             "X-Emby-Device-Id": _DEVICE_ID,
@@ -517,10 +518,23 @@ class EmbyClient:
         (Emby ``TotalRecordCount``). Internal callers (resolve) keep the
         default of 25; the CLI ``search --count`` overrides this.
         """
+        items, _total = self.search_items_result(
+            query, item_types=item_types, limit=limit,
+        )
+        return items
+
+    def search_items_result(
+        self,
+        query: str,
+        item_types: str = "Movie",
+        limit: int | None = 25,
+    ) -> tuple[list[dict], int]:
+        """Like :meth:`search_items`, but also return Emby ``TotalRecordCount``."""
         uid = self.resolve_user_id()
         items: list[dict] = []
         start = 0
         page_size = 200
+        total = 0
         while True:
             if limit is not None:
                 remaining = limit - len(items)
@@ -541,15 +555,15 @@ class EmbyClient:
             page = resp.json()
             chunk = page.get("Items", [])
             items.extend(chunk)
-            total = page.get("TotalRecordCount", len(items))
+            total = int(page.get("TotalRecordCount", len(items)))
             start += len(chunk)
             if not chunk or start >= total:
                 break
             if limit is not None and len(items) >= limit:
                 break
         if limit is not None:
-            return items[:limit]
-        return items
+            return items[:limit], total
+        return items, total
 
     def get_show_episodes(self, series_id: str, season: int | None = None) -> list[dict]:
         uid = self.resolve_user_id()

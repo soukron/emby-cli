@@ -7,6 +7,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from emby_cli.client import EmbyClient
+from emby_cli.constants import CLIENT_NAME
+
+
+def test_session_user_agent_identifies_client():
+    client = EmbyClient("http://host:8096", api_key="k")
+    ua = client.session.headers.get("User-Agent")
+    assert ua is not None
+    assert ua.startswith(f"{CLIENT_NAME}/")
+    assert not ua.startswith("python-requests")
 
 
 def test_server_url_strips_emby_suffix():
@@ -101,8 +110,9 @@ def test_search_items_respects_limit():
         "TotalRecordCount": 100,
     }
     with patch.object(client, "_get", return_value=page) as get:
-        items = client.search_items("foo", limit=10)
+        items, total = client.search_items_result("foo", limit=10)
 
     assert len(items) == 10
+    assert total == 100
     assert get.call_count == 1
     assert get.call_args.kwargs["params"]["Limit"] == 10
