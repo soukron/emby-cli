@@ -52,8 +52,9 @@ def _retry_response(
     server_message: Callable[[int, int, int], str],
     retry_http_error: Callable[[requests.Response | None], bool] | None = None,
     before_status: Callable[[requests.Response], bool] | None = None,
+    process_response: Callable[[requests.Response], None] | None = None,
 ) -> requests.Response:
-    """Run a request with exponential retry for connection and 5xx errors."""
+    """Run and optionally consume a response with retry for transient errors."""
     attempt = 1
     while True:
         response: requests.Response | None = None
@@ -62,6 +63,8 @@ def _retry_response(
             if before_status is not None and before_status(response):
                 raise _RetryImmediately
             response.raise_for_status()
+            if process_response is not None:
+                process_response(response)
             return response
         except _RetryImmediately:
             if attempt >= max_attempts:
@@ -815,7 +818,12 @@ class EmbyClient:
 
     def _download_segment(self, url: str, dest: Path) -> None:
         """Download a single HLS segment with retry."""
-        resp = _retry_response(
+        def write_segment(response: requests.Response) -> None:
+            with open(dest, "wb") as f:
+                for data in response.iter_content(chunk_size=DEFAULT_CHUNK):
+                    f.write(data)
+
+        _retry_response(
             lambda: self.session.get(
                 url, headers=self._auth_header(), stream=True, timeout=30,
             ),
@@ -828,10 +836,8 @@ class EmbyClient:
                 f"    Segment error {status} ({attempt}/{total}), waiting "
                 f"{RETRY_BACKOFF_BASE * (2 ** (attempt - 1))}s"
             ),
+            process_response=write_segment,
         )
-        with open(dest, "wb") as f:
-            for data in resp.iter_content(chunk_size=DEFAULT_CHUNK):
-                f.write(data)
 
     def download_item_hls(self, item_id: str, dest_path: Path, throttle: float = 0) -> Path:
         """Download via HLS chunks (like a web player) and remux to mkv."""
