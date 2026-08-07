@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `download --dry-run`: count planned items as `ok` in the Done summary (was always `ok=0`).
+- Dev: editable install now links to `src/` (pytest sees live edits without reinstall).
+
 ## 0.5.1
 
 - Set HTTP `User-Agent` to `emby-cli/<version>` (clear client identity; replaces the default `python-requests` UA).
