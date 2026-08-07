@@ -132,3 +132,32 @@ def test_search_items_respects_limit():
     assert total == 100
     assert get.call_count == 1
     assert get.call_args.kwargs["params"]["Limit"] == 10
+
+
+def test_get_all_items_uses_common_pagination():
+    client = EmbyClient("http://host:8096", api_key="k")
+    client.user_id = "uid"
+    page1 = MagicMock()
+    page1.json.return_value = {"Items": [{"Id": "1"}], "TotalRecordCount": 2}
+    page2 = MagicMock()
+    page2.json.return_value = {"Items": [{"Id": "2"}], "TotalRecordCount": 2}
+
+    with patch.object(client, "_get", side_effect=[page1, page2]) as get:
+        assert client.get_all_items(parent_id="library") == [{"Id": "1"}, {"Id": "2"}]
+
+    assert get.call_args_list[0].kwargs["params"]["ParentId"] == "library"
+    assert get.call_args_list[1].kwargs["params"]["StartIndex"] == 1
+
+
+def test_get_show_episodes_uses_common_pagination():
+    client = EmbyClient("http://host:8096", api_key="k")
+    client.user_id = "uid"
+    page = MagicMock()
+    page.json.return_value = {"Items": [{"Id": "episode"}], "TotalRecordCount": 1}
+
+    with patch.object(client, "_get", return_value=page) as get:
+        assert client.get_show_episodes("series", season=2) == [{"Id": "episode"}]
+
+    params = get.call_args.kwargs["params"]
+    assert params["UserId"] == "uid"
+    assert params["Season"] == 2

@@ -467,22 +467,56 @@ class EmbyClient:
         resp = self._get(f"/Users/{uid}/Items", params=params)
         return resp.json()
 
+    def _paginate(
+        self,
+        path: str,
+        params: dict,
+        *,
+        limit: int | None = None,
+        page_size: int = 200,
+    ) -> tuple[list[dict], int]:
+        """Fetch all Emby result pages, optionally capped to *limit* items."""
+        items: list[dict] = []
+        start = 0
+        total = 0
+        while True:
+            if limit is not None:
+                remaining = limit - len(items)
+                if remaining <= 0:
+                    break
+                batch = min(page_size, remaining)
+            else:
+                batch = page_size
+
+            page_params = {**params, "StartIndex": start, "Limit": batch}
+            page = self._get(path, params=page_params).json()
+            chunk = page.get("Items", [])
+            items.extend(chunk)
+            total = int(page.get("TotalRecordCount", len(items)))
+            start += len(chunk)
+            if not chunk or start >= total:
+                break
+
+        return (items[:limit] if limit is not None else items), total
+
     def get_all_items(
         self,
         parent_id: str | None = None,
         item_type: str | None = None,
     ) -> list[dict]:
         """Page through all items and return the full list."""
-        items: list[dict] = []
-        start = 0
-        batch = 200
-        while True:
-            page = self.get_items(parent_id=parent_id, item_type=item_type, start=start, limit=batch)
-            items.extend(page.get("Items", []))
-            total = page.get("TotalRecordCount", 0)
-            start += batch
-            if start >= total:
-                break
+        uid = self.resolve_user_id()
+        params: dict = {
+            "Recursive": "true",
+            "Fields": ITEM_FIELDS,
+            "SortBy": "SortName",
+            "SortOrder": "Ascending",
+        }
+        if parent_id:
+            params["ParentId"] = parent_id
+        if item_type:
+            params["IncludeItemTypes"] = item_type
+        items, _total = self._paginate(f"/Users/{uid}/Items", params)
         return items
 
     def get_item_info(self, item_id: str, *, fields: str | None = None) -> dict:
@@ -518,62 +552,23 @@ class EmbyClient:
     ) -> tuple[list[dict], int]:
         """Like :meth:`search_items`, but also return Emby ``TotalRecordCount``."""
         uid = self.resolve_user_id()
-        items: list[dict] = []
-        start = 0
-        page_size = 200
-        total = 0
-        while True:
-            if limit is not None:
-                remaining = limit - len(items)
-                if remaining <= 0:
-                    break
-                batch = min(page_size, remaining)
-            else:
-                batch = page_size
-            params = {
+        return self._paginate(
+            f"/Users/{uid}/Items",
+            {
                 "SearchTerm": query,
-                "StartIndex": start,
-                "Limit": batch,
                 "Recursive": "true",
                 "Fields": ITEM_FIELDS,
                 "IncludeItemTypes": item_types,
-            }
-            resp = self._get(f"/Users/{uid}/Items", params=params)
-            page = resp.json()
-            chunk = page.get("Items", [])
-            items.extend(chunk)
-            total = int(page.get("TotalRecordCount", len(items)))
-            start += len(chunk)
-            if not chunk or start >= total:
-                break
-            if limit is not None and len(items) >= limit:
-                break
-        if limit is not None:
-            return items[:limit], total
-        return items, total
+            },
+            limit=limit,
+        )
 
     def get_show_episodes(self, series_id: str, season: int | None = None) -> list[dict]:
         uid = self.resolve_user_id()
-        items: list[dict] = []
-        start = 0
-        batch = 200
-        while True:
-            params: dict = {
-                "UserId": uid,
-                "Fields": ITEM_FIELDS,
-                "StartIndex": start,
-                "Limit": batch,
-            }
-            if season is not None:
-                params["Season"] = season
-            resp = self._get(f"/Shows/{series_id}/Episodes", params=params)
-            page = resp.json()
-            chunk = page.get("Items", [])
-            items.extend(chunk)
-            total = page.get("TotalRecordCount", len(items))
-            start += batch
-            if start >= total or not chunk:
-                break
+        params: dict = {"UserId": uid, "Fields": ITEM_FIELDS}
+        if season is not None:
+            params["Season"] = season
+        items, _total = self._paginate(f"/Shows/{series_id}/Episodes", params)
         return items
 
     # -- playback ------------------------------------------------------------
