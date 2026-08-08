@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Docs: public `AGENTS.md` for contributors (layout, auth, CLI contracts, tests, release).
+
 ## 0.5.2
 
 Changed:

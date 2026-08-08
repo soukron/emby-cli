@@ -187,10 +187,11 @@ Flags override environment variables. Optional template: `.env.example` (export 
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 pytest -q
+ruff check .
 python -m build && twine check dist/*
 ```
 
-Releases: tag `vX.Y.Z` and push. CI publishes to PyPI via Trusted Publisher.
+Architecture, CLI contracts, testing rules, and release process: see **[AGENTS.md](AGENTS.md)** (for humans and AI agents). Releases: tag `vX.Y.Z` and push — CI publishes to PyPI only (no GitHub Releases).
 
 ---
 
