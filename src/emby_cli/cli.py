@@ -12,7 +12,7 @@ warnings.filterwarnings("ignore", message="urllib3 v2 only supports OpenSSL")
 
 import requests
 
-from emby_cli.client import EmbyClient
+from emby_cli.client import AuthenticationError, EmbyClient
 from emby_cli.commands.config import cmd_config
 from emby_cli.commands.download import cmd_download, validate_download_args
 from emby_cli.commands.help import COMMAND_SUMMARIES, cmd_help
@@ -291,7 +291,18 @@ def _open_client(args: argparse.Namespace) -> EmbyClient:
             file=sys.stderr,
         )
         sys.exit(1)
+    except AuthenticationError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
     except requests.HTTPError as exc:
+        resp = getattr(exc, "response", None)
+        if resp is not None and resp.status_code in (401, 403):
+            print(f"error: {exc}", file=sys.stderr)
+            print(
+                "Run `emby-cli login` (or pass a valid --api-key) and try again.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
         print(f"Authentication failed: {exc}", file=sys.stderr)
         sys.exit(1)
     return client
@@ -349,7 +360,11 @@ def main() -> None:
         "play": cmd_play,
         "show": cmd_show,
     }
-    commands[args.command](client, args)
+    try:
+        commands[args.command](client, args)
+    except AuthenticationError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

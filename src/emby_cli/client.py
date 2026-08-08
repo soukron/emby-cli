@@ -35,6 +35,16 @@ from emby_cli.version import get_version
 _DEVICE_ID = hashlib.md5(CLIENT_NAME.encode()).hexdigest()
 _AUTH_PATH = "/Users/AuthenticateByName"
 
+_AUTH_EXPIRED_MSG = (
+    "Session expired or credentials were rejected by the server. "
+    "Run `emby-cli login` (or pass a valid --api-key) and try again."
+)
+
+
+class AuthenticationError(RuntimeError):
+    """AccessToken / credentials no longer accepted (HTTP 401 on Emby)."""
+
+
 
 class _RetryImmediately(Exception):
     """Internal signal for a retry that does not need backoff."""
@@ -185,19 +195,30 @@ class EmbyClient:
             reauth_attempted = True
             return self._try_reauthenticate()
 
-        return _retry_response(
-            request,
-            max_attempts=max_attempts,
-            connection_message=lambda attempt, total, exc: (
-                f"  Connection error (attempt {attempt}/{total}), retrying in "
-                f"{RETRY_BACKOFF_BASE * (2 ** (attempt - 1))}s: {exc}"
-            ),
-            server_message=lambda status, attempt, total: (
-                f"  Server error {status} (attempt {attempt}/{total}), retrying in "
-                f"{RETRY_BACKOFF_BASE * (2 ** (attempt - 1))}s"
-            ),
-            retry_http_error=retry_after_reauth,
-        )
+        try:
+            return _retry_response(
+                request,
+                max_attempts=max_attempts,
+                connection_message=lambda attempt, total, exc: (
+                    f"  Connection error (attempt {attempt}/{total}), retrying in "
+                    f"{RETRY_BACKOFF_BASE * (2 ** (attempt - 1))}s: {exc}"
+                ),
+                server_message=lambda status, attempt, total: (
+                    f"  Server error {status} (attempt {attempt}/{total}), retrying in "
+                    f"{RETRY_BACKOFF_BASE * (2 ** (attempt - 1))}s"
+                ),
+                retry_http_error=retry_after_reauth,
+            )
+        except requests.HTTPError as exc:
+            resp = getattr(exc, "response", None)
+            if (
+                resp is not None
+                and resp.status_code == 401
+                and path != _AUTH_PATH
+            ):
+                self._discard_rejected_session()
+                raise AuthenticationError(_AUTH_EXPIRED_MSG) from exc
+            raise
 
     def _get(
         self,
@@ -330,11 +351,24 @@ class EmbyClient:
         self.access_token = self.api_key
         self.user_id = None
 
+    def _discard_rejected_session(self) -> None:
+        """Drop a rejected AccessToken from memory and disk (best effort)."""
+        if self.api_key and self.access_token == self.api_key:
+            # API-key auth: nothing useful to clear from the user cache.
+            return
+        self._invalidate_cached_session()
+
     def _try_reauthenticate(self) -> bool:
         if self._username is None or self._password is None:
             return False
         self._invalidate_cached_session()
-        self.authenticate(self._username, self._password)
+        try:
+            self.authenticate(self._username, self._password)
+        except requests.HTTPError as exc:
+            resp = getattr(exc, "response", None)
+            if resp is not None and resp.status_code in (401, 403):
+                return False
+            raise
         return True
 
     def logout_session(self) -> None:

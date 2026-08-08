@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 import requests
 
-from emby_cli.client import _AUTH_PATH, EmbyClient
+from emby_cli.client import _AUTH_PATH, AuthenticationError, EmbyClient
 from emby_cli.constants import MAX_RETRIES, RETRY_BACKOFF_BASE
 
 # ── helpers ──────────────────────────────────────────────────────────────
@@ -276,10 +276,9 @@ class TestHttp401Reauth:
             patch("emby_cli.client.time.sleep"),
             patch("emby_cli.client.clear_auth_cache"),
         ):
-            with pytest.raises(requests.HTTPError) as exc_info:
+            with pytest.raises(AuthenticationError, match="Session expired"):
                 c._get("/System/Info")
 
-        assert exc_info.value.response.status_code == 401
         assert req.call_count == 3
 
     def test_next_request_can_reauthenticate_again(self):
@@ -320,12 +319,16 @@ class TestHttp401Reauth:
         with (
             patch.object(c.session, "request", side_effect=[_resp(401)]) as req,
             patch("emby_cli.client.time.sleep") as sleep,
+            patch("emby_cli.client.clear_auth_cache") as clear_cache,
         ):
-            with pytest.raises(requests.HTTPError):
+            with pytest.raises(AuthenticationError, match="Session expired"):
                 c._get("/Items")
 
         assert req.call_count == 1
         sleep.assert_not_called()
+        clear_cache.assert_called_once_with(
+            server_url="http://host:8096", username="user"
+        )
 
     def test_no_reauth_without_username(self):
         c = EmbyClient("http://host:8096", use_auth_cache=False)
@@ -337,7 +340,7 @@ class TestHttp401Reauth:
             patch.object(c.session, "request", side_effect=[_resp(401)]) as req,
             patch("emby_cli.client.time.sleep") as sleep,
         ):
-            with pytest.raises(requests.HTTPError):
+            with pytest.raises(AuthenticationError, match="Session expired"):
                 c._get("/Items")
 
         assert req.call_count == 1

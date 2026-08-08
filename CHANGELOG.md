@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Expired/revoked sessions: print a clear `error:` on stderr (suggest `emby-cli login`) instead of an `HTTPError` traceback; drop the stale AccessToken from the local cache.
 - Docs: public `AGENTS.md` for contributors (layout, auth, CLI contracts, tests, release).
 
 ## 0.5.2

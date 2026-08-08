@@ -132,6 +132,7 @@ cli.main
 - `logout` — `POST /Sessions/Logout` when possible, then remove context.
 - `config` — `current-server`, `get-servers`, `use-server`, `view` (tokens redacted).
 - Other commands: no `--server` → active context; cache hit → reuse token; miss + credentials → transparent login; **HTTP 401** with password available → invalidate cache and re-authenticate **once per top-level request** (no infinite reauth loop).
+- If 401 cannot be recovered (no password, or re-login rejected): raise `AuthenticationError`, clear the stale cache entry, and let `main` print a short stderr message (no traceback).
 - Invalid selectors for `search` / `download` / `play` / `show` are rejected **before** opening a client.
 
 ### Intentional duplicate validation
