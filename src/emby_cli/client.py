@@ -5,9 +5,13 @@ from __future__ import annotations
 import hashlib
 import shutil
 import time
+import warnings
 from pathlib import Path
 from typing import Callable
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
+# Before requests/urllib3 (macOS LibreSSL → NotOpenSSLWarning).
+warnings.filterwarnings("ignore", message="urllib3 v2 only supports OpenSSL")
 
 import m3u8
 import requests

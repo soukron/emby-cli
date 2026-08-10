@@ -76,4 +76,7 @@ target-version = "py39"
 select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
-"src/emby_cli/cli.py" = ["E402"]  # warnings.filterwarnings antes de import requests (intencional)
+# warnings.filterwarnings before requests/urllib3 (macOS LibreSSL NotOpenSSLWarning)
+"src/emby_cli/__init__.py" = ["E402"]
+"src/emby_cli/cli.py" = ["E402"]
+"src/emby_cli/client.py" = ["E402"]

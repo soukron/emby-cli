@@ -8,6 +8,7 @@ import sys
 import warnings
 
 # macOS system Python ships LibreSSL; urllib3 v2 only warns, TLS still works.
+# Also set in __init__.py / client.py — package import can load urllib3 first.
 warnings.filterwarnings("ignore", message="urllib3 v2 only supports OpenSSL")
 
 import requests

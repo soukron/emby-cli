@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- macOS: suppress urllib3 `NotOpenSSLWarning` (system Python + LibreSSL) by filtering before `requests` is imported — the previous filter in `cli.py` ran too late because `__init__.py` already pulled in urllib3.
+
 ## 0.5.3
 
 Fixed:
