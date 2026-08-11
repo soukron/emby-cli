@@ -61,6 +61,18 @@ def _opt_int_arg(args: argparse.Namespace, name: str) -> int | None:
     return raw if isinstance(raw, int) else None
 
 
+def _normalize_item_type(item_type: str | None) -> str | None:
+    if not item_type:
+        return None
+    allowed = {
+        "movie": "Movie",
+        "episode": "Episode",
+        "audio": "Audio",
+        "video": "Video",
+    }
+    return allowed.get(item_type.strip().lower())
+
+
 def _parse_count(raw_count: object) -> tuple[int | None, bool]:
     """Return (count, is_all). count=None means unlimited."""
     if raw_count is None:
@@ -98,13 +110,13 @@ def validate_search_args(args: argparse.Namespace) -> str | None:
             "Provide exactly one of QUERY on --item/--library, "
             "--search, or --id"
         )
-    item_type = _opt_str_arg(args, "item_type")
+    item_type_raw = _opt_str_arg(args, "item_type")
     year = _opt_int_arg(args, "year")
-    if mode_is_library(args) and (item_type or year is not None):
+    if mode_is_library(args) and (item_type_raw or year is not None):
         return "--type/--year can only be used with --item/--media-item"
-    if getattr(args, "id", None) and (item_type or year is not None):
+    if getattr(args, "id", None) and (item_type_raw or year is not None):
         return "--type/--year cannot be used with --id"
-    if item_type and item_type not in {"Movie", "Episode", "Audio", "Video"}:
+    if item_type_raw and _normalize_item_type(item_type_raw) is None:
         return "error: --type must be one of Movie, Episode, Audio, Video"
     if year is not None and year < 0:
         return "error: --year must be >= 0"
@@ -135,7 +147,7 @@ def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
     count, count_all = _parse_count(raw_count)
     item_id = (getattr(args, "id", None) or "").strip() or None
     query, _ = resolve_query(args)
-    item_type = _opt_str_arg(args, "item_type")
+    item_type = _normalize_item_type(_opt_str_arg(args, "item_type"))
     year = _opt_int_arg(args, "year")
 
     if mode_is_library(args):

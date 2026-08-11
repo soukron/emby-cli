@@ -123,6 +123,33 @@ def test_item_query_filters_by_type_and_year(capsys):
     )
 
 
+def test_item_query_filters_lowercase_type(capsys):
+    client = MagicMock()
+    client.search_items_result.return_value = (
+        [
+            {"Id": "1", "Name": "Spider-Man", "Type": "Movie", "ProductionYear": 2026},
+        ],
+        1,
+    )
+    args = MagicMock(
+        count="all",
+        id=None,
+        search=None,
+        item="spider-man",
+        library=None,
+        item_type="movie",
+        year=2026,
+    )
+    search_mod.cmd_search(client, args)
+    out = capsys.readouterr().out
+    assert "Spider-Man" in out
+    client.search_items_result.assert_called_once_with(
+        "spider-man",
+        item_types="Movie",
+        limit=None,
+    )
+
+
 def test_library_count_all_lists_all_libraries(capsys):
     client = MagicMock()
     client.get_libraries.return_value = [

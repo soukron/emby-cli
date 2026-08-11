@@ -116,6 +116,19 @@ def test_validate_search_rejects_unknown_type():
     assert validate_search_args(args) == "error: --type must be one of Movie, Episode, Audio, Video"
 
 
+def test_validate_search_accepts_lowercase_type():
+    args = argparse.Namespace(
+        library=None,
+        item="spider-man",
+        id=None,
+        search=None,
+        count="all",
+        item_type="movie",
+        year=2026,
+    )
+    assert validate_search_args(args) is None
+
+
 def test_validate_download_media_item_needs_selector(monkeypatch):
     monkeypatch.delenv("EMBY_ITEM_ID", raising=False)
     args = argparse.Namespace(
