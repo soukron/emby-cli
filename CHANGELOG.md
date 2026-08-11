@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.1
+
+Fixed:
+
+- `tests/test_search.py`: normalize imports so Ruff passes consistently in CI and local `make lint`.
+
+Changed:
+
+- Release process docs: require running `make lint` and `make test` before creating/pushing a version tag.
+- CI/CD hardening: run CI on `v*` tags, and run Ruff + pytest inside `publish.yml` before building/publishing to PyPI.
+
 ## 0.6.0
 
 Changed:
