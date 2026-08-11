@@ -14,10 +14,10 @@ from emby_cli.commands.search import validate_search_args
 from emby_cli.mode_args import resolve_item_id
 
 
-def test_validate_search_requires_exactly_one_selector():
+def test_validate_search_item_requires_selector_without_count_all():
     args = argparse.Namespace(
-        library="",
-        item=None,
+        library=None,
+        item="",
         id=None,
         search=None,
         count=30,
@@ -26,6 +26,17 @@ def test_validate_search_requires_exactly_one_selector():
         "Provide QUERY/--search or --id. "
         "Use --count all to list everything."
     )
+
+
+def test_validate_search_library_allows_empty_selector_with_count_n():
+    args = argparse.Namespace(
+        library="",
+        item=None,
+        id=None,
+        search=None,
+        count=1,
+    )
+    assert validate_search_args(args) is None
 
 
 def test_validate_search_ok_embedded_query():
@@ -75,7 +86,7 @@ def test_validate_search_count_positive():
     assert validate_search_args(args) == "error: --count must be >= 1"
 
 
-def test_validate_search_type_only_with_items():
+def test_validate_search_year_only_with_items():
     args = argparse.Namespace(
         library="",
         item=None,
@@ -83,11 +94,9 @@ def test_validate_search_type_only_with_items():
         search=None,
         count="all",
         item_type="Movie",
-        year=None,
+        year=2026,
     )
-    assert validate_search_args(args) == (
-        "--type/--year can only be used with --item/--media-item"
-    )
+    assert validate_search_args(args) == "--year can only be used with --item/--media-item"
 
 
 def test_validate_search_rejects_id_with_filters():
@@ -127,6 +136,62 @@ def test_validate_search_accepts_lowercase_type():
         year=2026,
     )
     assert validate_search_args(args) is None
+
+
+def test_validate_search_rejects_library_sort_year():
+    args = argparse.Namespace(
+        library="movies",
+        item=None,
+        id=None,
+        search=None,
+        count=30,
+        order_by="year",
+        item_type=None,
+        year=None,
+    )
+    assert validate_search_args(args) == "--order-by year/size/resolution can only be used with --item/--media-item"
+
+
+def test_validate_search_rejects_library_sort_size():
+    args = argparse.Namespace(
+        library="movies",
+        item=None,
+        id=None,
+        search=None,
+        count=30,
+        order_by="size",
+        item_type=None,
+        year=None,
+    )
+    assert validate_search_args(args) == "--order-by year/size/resolution can only be used with --item/--media-item"
+
+
+def test_validate_search_accepts_library_type_filter():
+    args = argparse.Namespace(
+        library="",
+        item=None,
+        id=None,
+        search=None,
+        count="all",
+        order_by="items",
+        item_type="tvshows",
+        year=None,
+    )
+    assert validate_search_args(args) is None
+
+
+def test_validate_search_rejects_item_order_by_items():
+    args = argparse.Namespace(
+        library=None,
+        item="matrix",
+        id=None,
+        search=None,
+        count=30,
+        order_by="items",
+        item_type=None,
+        year=None,
+    )
+    assert validate_search_args(args) == "--order-by items can only be used with --library"
 
 
 def test_validate_download_media_item_needs_selector(monkeypatch):
@@ -241,13 +306,14 @@ def test_main_search_library_without_selector_skips_auth(capsys, monkeypatch):
         "sys.argv",
         ["emby-cli", "--server", "http://x", "--api-key", "k", "search", "--library"],
     )
-    with patch("emby_cli.cli._open_client") as open_client:
-        with pytest.raises(SystemExit) as exc:
-            main()
-    assert exc.value.code == 1
-    open_client.assert_not_called()
-    err = capsys.readouterr().err
-    assert "Use --count all to list everything" in err
+    with (
+        patch("emby_cli.cli._open_client") as open_client,
+        patch("emby_cli.cli.cmd_search") as cmd_search,
+    ):
+        main()
+    open_client.assert_called_once()
+    cmd_search.assert_called_once()
+    assert "No results." not in capsys.readouterr().err
 
 
 def test_main_download_library_without_selector_skips_auth(capsys, monkeypatch):

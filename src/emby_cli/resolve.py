@@ -111,11 +111,13 @@ def print_item_choices(
     *,
     selected: dict | None = None,
     excluded: set[str] | None = None,
+    sort_rows: bool = True,
 ) -> None:
     """Print a compact, uniform table of items (movies, series, episodes)."""
     if not items:
         return
-    items = sort_for_display(items)
+    if sort_rows:
+        items = sort_for_display(items)
     excluded = excluded or set()
     id_w = max(len("ID"), max(len(str(it.get("Id", ""))) for it in items))
     name_w = 44
@@ -154,11 +156,12 @@ def print_available_libraries(libraries: list[dict]) -> None:
         print(f"  - [{lib.get('Id', '?')}] {lib.get('Name', '?')}")
 
 
-def print_library_choices(libraries: list[dict]) -> None:
+def print_library_choices(libraries: list[dict], *, sort_rows: bool = True) -> None:
     """Print libraries: ID, Name, Type, Items (no Year/Res/Size)."""
     if not libraries:
         return
-    libraries = sort_for_display(libraries)
+    if sort_rows:
+        libraries = sort_for_display(libraries)
     id_w = max(len("ID"), max(len(str(lib.get("Id", ""))) for lib in libraries))
     name_w = 44
     type_w = max(len("Type"), max(len(str(lib.get("Type") or "?")) for lib in libraries))

@@ -208,6 +208,23 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="YYYY",
         help="Filter media items by production year",
     )
+    sr.add_argument(
+        "--order-by",
+        dest="order_by",
+        choices=["year", "name", "id", "size", "resolution", "items"],
+        default=None,
+        help="Order search results by year, name, id, size, resolution, or items",
+    )
+    sr.add_argument(
+        "--desc",
+        action="store_true",
+        help="Sort in descending order",
+    )
+    sr.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass disk cache read and refresh it from API",
+    )
 
     pl = sub.add_parser("play", help=_help_by_name["play"])
     pl.add_argument(
@@ -246,6 +263,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="On ambiguous search results, auto-select best ≤1080p "
              "(default: list matches and fail)",
     )
+    pl.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass disk cache read and refresh it from API",
+    )
 
     sh = sub.add_parser("show", help=_help_by_name["show"])
     sh_mode = sh.add_mutually_exclusive_group(required=True)
@@ -270,9 +292,19 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Media item or library ID",
     )
+    sh.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass disk cache read and refresh it from API",
+    )
 
     sub.add_parser("version", help=_help_by_name["version"])
-    sub.add_parser("info", help=_help_by_name["info"])
+    info = sub.add_parser("info", help=_help_by_name["info"])
+    info.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass disk cache read and refresh it from API",
+    )
 
     return p
 
@@ -287,6 +319,8 @@ def _open_client(args: argparse.Namespace) -> EmbyClient:
 
     api_key, username, password = resolve_operational_auth(args)
     client = EmbyClient(server, api_key=api_key)
+    client.use_data_cache = args.command != "download"
+    client.no_data_cache = bool(getattr(args, "no_cache", False))
 
     if api_key:
         return client

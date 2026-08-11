@@ -39,7 +39,11 @@ Use `emby-cli help` for the command list, and `emby-cli <command> -h` for option
 
 ---
 
+
+
 ## Everyday use
+
+
 
 ### Server info
 
@@ -48,6 +52,8 @@ emby-cli version    # CLI version (and Emby version when connected)
 emby-cli info       # user, server, library count, content totals
 ```
 
+
+
 ### Search
 
 Find movies, episodes, and other media — or list libraries:
@@ -55,10 +61,12 @@ Find movies, episodes, and other media — or list libraries:
 ```bash
 emby-cli search --item "fast and furious"
 emby-cli search --item "fast and furious" --count 5
-emby-cli search --item "spider-man" --type Movie --year 2026
+emby-cli search --item "spider-man" --type Movie --year 2017
 emby-cli search --item --id 123456
 emby-cli search --library "peliculas"
 emby-cli search --library --count all
+emby-cli search --library --order-by items --desc --count 1
+emby-cli search --item "matrix" --order-by resolution --desc --no-cache
 ```
 
 `--item` and `--library` accept the search text directly. You can also pass `--id` when you already know the Emby ID.
@@ -70,7 +78,10 @@ Inspect one title or one library by Emby ID (use `search` first if you need to f
 ```bash
 emby-cli show --item --id 123456
 emby-cli show --library --id 614156
+emby-cli show --item --id 123456 --no-cache
 ```
+
+
 
 ### Play
 
@@ -101,13 +112,15 @@ A comma-separated list of IDs (`a,b,c`) is supported for `download --item --id` 
 
 Useful options:
 
-| Option | Meaning |
-|--------|---------|
-| `-n` / `--dry-run` | Resolve titles only — do not write files |
-| `-o` / `--output` | Output folder (default `./downloads`) |
-| `-f` / `--force` | Re-download even if a matching local file exists |
+
+| Option             | Meaning                                           |
+| ------------------ | ------------------------------------------------- |
+| `-n` / `--dry-run` | Resolve titles only — do not write files          |
+| `-o` / `--output`  | Output folder (default `./downloads`)             |
+| `-f` / `--force`   | Re-download even if a matching local file exists  |
 | `--pick-best-item` | When several versions match, pick the best ≤1080p |
-| `-m download\|stream\|hls` | How to fetch the file (see below) |
+| `-m` / `--method`  | Download method                                            |
+
 
 **Title lines** in `--item` / `--from-file` can look like:
 
@@ -119,15 +132,29 @@ By default, matching is **strict**: a wrong year or several ambiguous results st
 
 Library downloads match the library **name** (case-insensitive, unique match required).
 
+### Data cache
+
+Read-only commands (`search`, `show`, `play`, `info`) use a JSON disk cache under
+`~/.cache/emby-cli/data` (or under `EMBY_CACHE_DIR/data`).
+
+- Default TTL: **600 seconds** (`EMBY_DATA_CACHE_TTL` to override).
+- `--no-cache`: do not read cache; call API directly and refresh cache on disk.
+- Cache keys are isolated by **server URL + user ID** to prevent cross-server mixing.
+- `download` never uses this data cache.
+
 ---
 
+
+
 ## Logging in and switching servers
+
 
 | Approach         | When to use                                                        |
 | ---------------- | ------------------------------------------------------------------ |
 | `emby-cli login` | Recommended — saves a session and remembers the server             |
 | API key          | `--api-key` / `EMBY_API_KEY` (keys are not stored by `login`)      |
 | Flags / env      | `--server`, `--username`, `--password` or `EMBY_*` for one-off use |
+
 
 Manage saved servers:
 
@@ -143,9 +170,12 @@ Sessions live under `~/.cache/emby-cli/auth.json` (override with `EMBY_CACHE_DIR
 
 ---
 
+
+
 ## Download methods
 
 Choose with `-m` / `EMBY_METHOD`:
+
 
 | Method               | Best for                                |
 | -------------------- | --------------------------------------- |
@@ -153,11 +183,15 @@ Choose with `-m` / `EMBY_METHOD`:
 | `stream`             | Direct stream URL (similar to Emby Web) |
 | `hls`                | HLS remux to `.mkv`                     |
 
+
 ---
+
+
 
 ## Configuration reference
 
 Flags override environment variables. Optional template: `.env.example` (export the vars yourself — the CLI does not load `.env` files).
+
 
 | Variable                          | Description                                         |
 | --------------------------------- | --------------------------------------------------- |
@@ -170,8 +204,12 @@ Flags override environment variables. Optional template: `.env.example` (export 
 | `EMBY_ITEM_ID`                    | Default `--id` for item download / play             |
 | `EMBY_CACHE_DIR`                  | Credentials directory (default `~/.cache/emby-cli`) |
 | `EMBY_NO_AUTH_CACHE`              | `1` = disable session cache                         |
+| `EMBY_DATA_CACHE_TTL`             | Data-cache TTL in seconds (default `600`)           |
+
 
 ---
+
+
 
 ## Tips
 
@@ -181,6 +219,8 @@ Flags override environment variables. Optional template: `.env.example` (export 
 - Content totals in `info` can count multiple versions of the same title separately.
 
 ---
+
+
 
 ## For contributors
 
@@ -196,6 +236,8 @@ Architecture, CLI contracts, testing rules, and release process: see **[AGENTS.m
 
 ---
 
+
+
 ## Responsible use
 
 This tool talks to Emby over its normal HTTP API. Whether download or playback is allowed depends on **how that server is configured** and on **the terms set by whoever runs it**.
@@ -203,6 +245,8 @@ This tool talks to Emby over its normal HTTP API. Whether download or playback i
 Use `emby-cli` only on servers you are authorized to access, and only in ways that comply with that server’s terms of use, policies, and applicable law. The authors provide the software as-is and are **not responsible** for misuse, for downloads from servers that disallow them, or for any consequences of using the tool.
 
 ---
+
+
 
 ## License
 

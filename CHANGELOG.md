@@ -1,11 +1,18 @@
 # Changelog
 
-## Unreleased
+## 0.6.0
 
 Changed:
 
 - `search`: removed `--all`; use `--count all` to list everything.
 - `search --item`: always fetch all paginated results (`limit=None`), then apply `--type` and `--year`, then apply `--count`.
+- `search`: `--order-by` now supports `name`, `id`, `year`, `size`, `resolution`, and `items` (`items` for libraries).
+- `search --library`: QUERY is optional; without QUERY it lists all libraries and then applies `--order-by`/`--count`.
+
+Added:
+
+- Data cache under `~/.cache/emby-cli/data` for read-only metadata calls in `search`, `show`, `play`, and `info` (default TTL: 600s; env: `EMBY_DATA_CACHE_TTL`).
+- `--no-cache` for `search`, `show`, `play`, and `info`: bypass disk-cache reads, fetch from API, and refresh cache on disk.
 
 ## 0.5.4
 

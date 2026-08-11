@@ -33,6 +33,7 @@ from emby_cli.constants import (
     MAX_RETRIES,
     RETRY_BACKOFF_BASE,
 )
+from emby_cli.data_cache import load_json, save_json
 from emby_cli.util import remux_segments
 from emby_cli.version import get_version
 
@@ -124,6 +125,8 @@ class EmbyClient:
         self.user_id: str | None = None
         self.access_token: str | None = api_key
         self.use_auth_cache = use_auth_cache
+        self.use_data_cache = False
+        self.no_data_cache = False
         self._username: str | None = None
         self._password: str | None = None
         self.session = requests.Session()
@@ -146,6 +149,16 @@ class EmbyClient:
         if path.lower().startswith("/emby/"):
             return f"{self.server_url}{path}"
         return f"{self.server_url}/emby{path}"
+
+    def _cache_read(self, key: str) -> object | None:
+        if not self.use_data_cache or self.no_data_cache:
+            return None
+        return load_json(key)
+
+    def _cache_write(self, key: str, value: object) -> None:
+        if not self.use_data_cache:
+            return
+        save_json(key, value)
 
     def _auth_header(self) -> dict:
         parts = [
@@ -509,9 +522,16 @@ class EmbyClient:
         params: dict = {}
         if user_id:
             params["UserId"] = user_id
-        return self._get(
+        uid = user_id or self.resolve_user_id()
+        key = f"v1:get-item-counts:{self.server_url}:{uid}"
+        cached = self._cache_read(key)
+        if isinstance(cached, dict):
+            return cached
+        data = self._get(
             "/Items/Counts", params=params or None, **self._opt_kwargs(timeout, retries)
         ).json()
+        self._cache_write(key, data)
+        return data
 
     # -- browse --------------------------------------------------------------
 
@@ -522,8 +542,14 @@ class EmbyClient:
         retries: int | None = None,
     ) -> list[dict]:
         uid = self.resolve_user_id()
+        key = f"v1:get-libraries:{self.server_url}:{uid}"
+        cached = self._cache_read(key)
+        if isinstance(cached, list):
+            return cached
         resp = self._get(f"/Users/{uid}/Views", **self._opt_kwargs(timeout, retries))
-        return resp.json().get("Items", [])
+        items = resp.json().get("Items", [])
+        self._cache_write(key, items)
+        return items
 
     def get_items(
         self,
@@ -550,8 +576,18 @@ class EmbyClient:
             params["ParentId"] = parent_id
         if item_type:
             params["IncludeItemTypes"] = item_type
+        cache_key = (
+            f"v1:get-items:{self.server_url}:{uid}:"
+            f"{parent_id or ''}:{item_type or ''}:{recursive}:{start}:{limit}:"
+            f"{sort_by}:{sort_order}:{fields or ITEM_FIELDS}"
+        )
+        cached = self._cache_read(cache_key)
+        if isinstance(cached, dict):
+            return cached
         resp = self._get(f"/Users/{uid}/Items", params=params)
-        return resp.json()
+        data = resp.json()
+        self._cache_write(cache_key, data)
+        return data
 
     def _paginate(
         self,
@@ -607,11 +643,17 @@ class EmbyClient:
 
     def get_item_info(self, item_id: str, *, fields: str | None = None) -> dict:
         uid = self.resolve_user_id()
+        cache_key = f"v1:get-item-info:{self.server_url}:{uid}:{item_id}:{fields or ITEM_FIELDS}"
+        cached = self._cache_read(cache_key)
+        if isinstance(cached, dict):
+            return cached
         resp = self._get(
             f"/Users/{uid}/Items/{item_id}",
             params={"Fields": fields or ITEM_FIELDS},
         )
-        return resp.json()
+        data = resp.json()
+        self._cache_write(cache_key, data)
+        return data
 
     def search_items(
         self,
@@ -638,7 +680,15 @@ class EmbyClient:
     ) -> tuple[list[dict], int]:
         """Like :meth:`search_items`, but also return Emby ``TotalRecordCount``."""
         uid = self.resolve_user_id()
-        return self._paginate(
+        cache_key = f"v1:search-items-result:{self.server_url}:{uid}:{item_types}:{query}"
+        cached = self._cache_read(cache_key)
+        if (
+            isinstance(cached, dict)
+            and isinstance(cached.get("items"), list)
+            and isinstance(cached.get("total"), int)
+        ):
+            return cached["items"], cached["total"]
+        items, total = self._paginate(
             f"/Users/{uid}/Items",
             {
                 "SearchTerm": query,
@@ -648,6 +698,9 @@ class EmbyClient:
             },
             limit=limit,
         )
+        if limit is None:
+            self._cache_write(cache_key, {"items": items, "total": int(total)})
+        return items, total
 
     def get_show_episodes(self, series_id: str, season: int | None = None) -> list[dict]:
         uid = self.resolve_user_id()

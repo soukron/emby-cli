@@ -161,3 +161,32 @@ def test_get_show_episodes_uses_common_pagination():
     params = get.call_args.kwargs["params"]
     assert params["UserId"] == "uid"
     assert params["Season"] == 2
+
+
+def test_data_cache_is_isolated_per_server(tmp_path, monkeypatch):
+    monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
+
+    c1 = EmbyClient("http://srv-one:8096", api_key="k")
+    c1.use_data_cache = True
+    c1.user_id = "uid"
+    resp1 = MagicMock()
+    resp1.json.return_value = {"Items": [{"Id": "1", "Name": "Movies"}]}
+
+    c2 = EmbyClient("http://srv-two:8096", api_key="k")
+    c2.use_data_cache = True
+    c2.user_id = "uid"
+    resp2 = MagicMock()
+    resp2.json.return_value = {"Items": [{"Id": "9", "Name": "Series"}]}
+
+    with patch.object(c1, "_get", return_value=resp1) as get1, patch.object(c2, "_get", return_value=resp2) as get2:
+        libs1_first = c1.get_libraries()
+        libs2_first = c2.get_libraries()
+        libs1_second = c1.get_libraries()
+        libs2_second = c2.get_libraries()
+
+    assert libs1_first == [{"Id": "1", "Name": "Movies"}]
+    assert libs2_first == [{"Id": "9", "Name": "Series"}]
+    assert libs1_second == libs1_first
+    assert libs2_second == libs2_first
+    assert get1.call_count == 1
+    assert get2.call_count == 1

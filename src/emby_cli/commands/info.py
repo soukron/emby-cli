@@ -60,6 +60,8 @@ def cmd_info(args: argparse.Namespace) -> None:
     api_key, username, password = resolve_operational_auth(args)
     configured_user = username
     client = EmbyClient(server, api_key=api_key)
+    client.use_data_cache = True
+    client.no_data_cache = bool(getattr(args, "no_cache", False))
     probe_kw = {"timeout": INFO_TIMEOUT, "retries": INFO_RETRIES}
 
     try:

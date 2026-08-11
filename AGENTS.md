@@ -35,6 +35,7 @@ CLI to **search**, **inspect** (`show`), **play**, and **download/backup** origi
 │   ├── cli.py              # argparse + main() + pre-auth validation
 │   ├── client.py           # EmbyClient: HTTP, auth, browse, download/HLS
 │   ├── auth_cache.py       # auth.json contexts (kubeconfig-style)
+│   ├── data_cache.py       # JSON cache for read-only metadata calls
 │   ├── credentials.py      # resolve server / user / password
 │   ├── mode_args.py        # --item / --library / QUERY helpers
 │   ├── resolve.py          # title lines, pick_best, choice tables
@@ -93,6 +94,7 @@ The CLI reads **`os.environ` only** (it does not auto-load `.env`; export vars o
 | `EMBY_PLAYER` | External player command for `play` |
 | `EMBY_CACHE_DIR` | Credential store dir (default `~/.cache/emby-cli`; file `auth.json`) |
 | `EMBY_NO_AUTH_CACHE` | `1` = do not read/write session cache |
+| `EMBY_DATA_CACHE_TTL` | Metadata cache TTL in seconds (default `600`) |
 
 Never commit `.env`, tokens, passwords, or stream URLs that embed credentials.
 
@@ -113,6 +115,7 @@ cli.main
 |---------|-----------------|
 | HTTP, retries, auth, browse, binary/HLS download | `client.py` |
 | Session store on disk | `auth_cache.py` |
+| Metadata cache on disk | `data_cache.py` |
 | Resolving server/user/password from flags/env/TTY/cache | `credentials.py` |
 | `--item` / `--library` / embedded QUERY | `mode_args.py` + command modules |
 | Title-line resolution (`Movie (2010)`, `Show S01E02`) | `resolve.py` |
@@ -188,6 +191,14 @@ Strict by default: year with no match, multiple series, or multiple versions →
 | `hls` | TS segments remuxed to `.mkv` via bundled `static-ffmpeg` — **not** bit-identical |
 
 Identity headers / User-Agent: `emby-cli/<version>` (`constants.CLIENT_NAME`). `EMBY_SERVER` may include or omit `/emby` (normalized).
+
+### Data cache isolation
+
+- Read-only commands (`search`, `show`, `play`, `info`) can use disk cache for metadata.
+- `download` must bypass data cache.
+- Cache keys must include **server URL + resolved user ID** (and endpoint params) so
+  data from one server is never served for another.
+- `--no-cache` means “do not read cache”, but still fetch from API and refresh disk.
 
 ### Exit codes
 

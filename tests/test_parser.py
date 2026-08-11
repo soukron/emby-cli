@@ -284,6 +284,52 @@ def test_search_item_type_and_year():
     assert args.year == 2026
 
 
+def test_search_sort_and_desc():
+    parser = build_parser()
+    args = parser.parse_args([
+        "--server", "http://x", "--api-key", "k",
+        "search", "--item", "spider", "--order-by", "year", "--desc",
+    ])
+    assert args.order_by == "year"
+    assert args.desc is True
+
+
+def test_search_order_by_size():
+    parser = build_parser()
+    args = parser.parse_args([
+        "--server", "http://x", "--api-key", "k",
+        "search", "--item", "spider", "--order-by", "size",
+    ])
+    assert args.order_by == "size"
+
+
+def test_search_order_by_name():
+    parser = build_parser()
+    args = parser.parse_args([
+        "--server", "http://x", "--api-key", "k",
+        "search", "--item", "spider", "--order-by", "name",
+    ])
+    assert args.order_by == "name"
+
+
+def test_search_order_by_items():
+    parser = build_parser()
+    args = parser.parse_args([
+        "--server", "http://x", "--api-key", "k",
+        "search", "--library", "--count", "all", "--order-by", "items",
+    ])
+    assert args.order_by == "items"
+
+
+def test_search_no_cache_flag():
+    parser = build_parser()
+    args = parser.parse_args([
+        "--server", "http://x", "--api-key", "k",
+        "search", "--library", "--count", "1", "--no-cache",
+    ])
+    assert args.no_cache is True
+
+
 def test_search_requires_mode():
     parser = build_parser()
     with pytest.raises(SystemExit):
