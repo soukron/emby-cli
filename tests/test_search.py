@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from emby_cli.commands import search as search_mod
+
+
 def test_item_count_all_lists_everything(capsys):
     client = MagicMock()
     client.search_items_result.return_value = (

@@ -254,7 +254,14 @@ Version comes from **git tags** `vX.Y.Z` via hatch-vcs. Do not hardcode the vers
 
 1. Move `CHANGELOG.md` `## Unreleased` → `## X.Y.Z` (user-visible notes).
 2. Ensure the working tree is clean.
-3. Tag and push:
+3. Run quality gates from this repo root:
+
+   ```bash
+   make lint
+   make test
+   ```
+
+4. Tag and push:
 
    ```bash
    git tag -a "vX.Y.Z" -m "Release vX.Y.Z"
@@ -262,8 +269,8 @@ Version comes from **git tags** `vX.Y.Z` via hatch-vcs. Do not hardcode the vers
    git push origin "vX.Y.Z"
    ```
 
-4. Watch `.github/workflows/publish.yml` (GitHub Environment `pypi` + Trusted Publisher).
-5. If CI already uploaded the wheel and a manual `twine upload` fails with **400 file-name-reuse**, upload **only the `.tar.gz`**.
+5. Watch `.github/workflows/publish.yml` (GitHub Environment `pypi` + Trusted Publisher).
+6. If CI already uploaded the wheel and a manual `twine upload` fails with **400 file-name-reuse**, upload **only the `.tar.gz`**.
 
 Maintainers with a local wrapper Makefile may use an equivalent `make release VERSION=X.Y.Z`; the git operations above are the source of truth inside this repository.
 
