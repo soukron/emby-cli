@@ -186,7 +186,7 @@ def test_search_item_query_embedded():
     assert args.library is None
     assert args.search is None
     assert args.id is None
-    assert args.count == 30
+    assert args.count == "30"
 
 
 def test_search_item_query_via_search_flag():
@@ -198,7 +198,7 @@ def test_search_item_query_via_search_flag():
     assert args.item == ""
     assert args.search == "matrix"
     assert args.id is None
-    assert args.count == 30
+    assert args.count == "30"
 
 
 def test_search_media_item_alias():
@@ -210,26 +210,26 @@ def test_search_media_item_alias():
     assert args.item == "matrix"
 
 
-def test_search_library_all():
+def test_search_library_count_all():
     parser = build_parser()
     args = parser.parse_args([
         "--server", "http://x", "--api-key", "k",
-        "search", "--library", "--all",
+        "search", "--library", "--count", "all",
     ])
     assert args.library == ""
-    assert args.all is True
+    assert args.count == "all"
     assert args.id is None
     assert args.search is None
 
 
-def test_search_item_all():
+def test_search_item_count_all():
     parser = build_parser()
     args = parser.parse_args([
         "--server", "http://x", "--api-key", "k",
-        "search", "--item", "--all",
+        "search", "--item", "--count", "all",
     ])
     assert args.item == ""
-    assert args.all is True
+    assert args.count == "all"
 
 
 def test_search_library_id():
@@ -270,7 +270,18 @@ def test_search_item_count():
         "search", "--item", "matrix", "--count", "50",
     ])
     assert args.item == "matrix"
-    assert args.count == 50
+    assert args.count == "50"
+
+
+def test_search_item_type_and_year():
+    parser = build_parser()
+    args = parser.parse_args([
+        "--server", "http://x", "--api-key", "k",
+        "search", "--item", "spider", "--type", "Movie", "--year", "2026",
+    ])
+    assert args.item == "spider"
+    assert args.item_type == "Movie"
+    assert args.year == 2026
 
 
 def test_search_requires_mode():

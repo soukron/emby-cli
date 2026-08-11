@@ -1,4 +1,4 @@
-"""search command — media items or libraries (--item/--library + QUERY/--id/--all)."""
+"""search command — media items or libraries (--item/--library + QUERY/--id)."""
 
 from __future__ import annotations
 
@@ -32,38 +32,97 @@ def _print_libraries(
     client: EmbyClient,
     libraries: list[dict],
     *,
-    count: int,
+    count: int | None,
 ) -> None:
     if not libraries:
         print("No results.")
         return
     available = len(libraries)
-    shown = sort_for_display(libraries)[:count]
+    shown = sort_for_display(libraries) if count is None else sort_for_display(libraries)[:count]
     print_library_choices(library_rows(client, shown))
     _print_total(len(shown), available)
 
 
 def _selector_count(args: argparse.Namespace, query: str | None) -> int:
     item_id = (getattr(args, "id", None) or "").strip()
-    use_all = bool(getattr(args, "all", False))
-    return sum(bool(x) for x in (item_id, query, use_all))
+    return sum(bool(x) for x in (item_id, query))
+
+
+def _opt_str_arg(args: argparse.Namespace, name: str) -> str | None:
+    raw = getattr(args, name, None)
+    if not isinstance(raw, str):
+        return None
+    val = raw.strip()
+    return val or None
+
+
+def _opt_int_arg(args: argparse.Namespace, name: str) -> int | None:
+    raw = getattr(args, name, None)
+    return raw if isinstance(raw, int) else None
+
+
+def _parse_count(raw_count: object) -> tuple[int | None, bool]:
+    """Return (count, is_all). count=None means unlimited."""
+    if raw_count is None:
+        return SEARCH_COUNT_DEFAULT, False
+    if isinstance(raw_count, int):
+        count = raw_count
+    else:
+        text = str(raw_count).strip().lower()
+        if text == "all":
+            return None, True
+        count = int(text)
+    if count < 1:
+        raise ValueError("error: --count must be >= 1")
+    return count, False
 
 
 def validate_search_args(args: argparse.Namespace) -> str | None:
     """Return an error message if selectors are invalid; else ``None``."""
     raw_count = getattr(args, "count", SEARCH_COUNT_DEFAULT)
-    count = SEARCH_COUNT_DEFAULT if raw_count is None else int(raw_count)
-    if count < 1:
-        return "error: --count must be >= 1"
+    try:
+        _count, count_all = _parse_count(raw_count)
+    except ValueError as exc:
+        return str(exc)
     query, err = resolve_query(args)
     if err:
         return err
-    if _selector_count(args, query) != 1:
+    selectors = _selector_count(args, query)
+    if selectors == 0 and not count_all:
+        return (
+            "Provide QUERY/--search or --id. "
+            "Use --count all to list everything."
+        )
+    if selectors > 1:
         return (
             "Provide exactly one of QUERY on --item/--library, "
-            "--search, --id, or --all"
+            "--search, or --id"
         )
+    item_type = _opt_str_arg(args, "item_type")
+    year = _opt_int_arg(args, "year")
+    if mode_is_library(args) and (item_type or year is not None):
+        return "--type/--year can only be used with --item/--media-item"
+    if getattr(args, "id", None) and (item_type or year is not None):
+        return "--type/--year cannot be used with --id"
+    if item_type and item_type not in {"Movie", "Episode", "Audio", "Video"}:
+        return "error: --type must be one of Movie, Episode, Audio, Video"
+    if year is not None and year < 0:
+        return "error: --year must be >= 0"
     return None
+
+
+def _item_matches_filters(item: dict, *, item_type: str | None, year: int | None) -> bool:
+    if item_type and item.get("Type") != item_type:
+        return False
+    if year is not None and item.get("ProductionYear") != year:
+        return False
+    return True
+
+
+def _apply_item_filters(items: list[dict], *, item_type: str | None, year: int | None) -> list[dict]:
+    if not item_type and year is None:
+        return items
+    return [it for it in items if _item_matches_filters(it, item_type=item_type, year=year)]
 
 
 def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
@@ -73,16 +132,14 @@ def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
         sys.exit(1)
 
     raw_count = getattr(args, "count", SEARCH_COUNT_DEFAULT)
-    count = SEARCH_COUNT_DEFAULT if raw_count is None else int(raw_count)
+    count, count_all = _parse_count(raw_count)
     item_id = (getattr(args, "id", None) or "").strip() or None
     query, _ = resolve_query(args)
-    use_all = bool(getattr(args, "all", False))
+    item_type = _opt_str_arg(args, "item_type")
+    year = _opt_int_arg(args, "year")
 
     if mode_is_library(args):
         libraries = client.get_libraries()
-        if use_all:
-            _print_libraries(client, libraries, count=count)
-            return
         if item_id:
             lib = find_library(libraries, library_id=item_id)
             if not lib:
@@ -93,29 +150,11 @@ def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
             return
 
         matches = match_libraries(libraries, query or "")
-        _print_libraries(client, matches, count=count)
+        listing = libraries if count_all and not query else matches
+        _print_libraries(client, listing, count=count)
         return
 
     # --item / --media-item
-    if use_all:
-        probe = client.get_items(item_type=SEARCH_ITEM_TYPES, limit=0)
-        total = int(probe.get("TotalRecordCount") or 0)
-        if total > count:
-            print(
-                f"There are {total} media items on this server. "
-                "Please narrow the results with a query, for example:\n"
-                '  emby-cli search --item "title"',
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        if total == 0:
-            print("No results.")
-            return
-        items = client.get_all_items(item_type=SEARCH_ITEM_TYPES)
-        print_item_choices(items)
-        _print_total(len(items))
-        return
-
     if item_id:
         try:
             item = client.get_item_info(item_id)
@@ -126,13 +165,17 @@ def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
         _print_total(1)
         return
 
-    items, available = client.search_items_result(
-        query,
-        item_types=SEARCH_ITEM_TYPES,
-        limit=count,
+    search_query = query or ""
+    items, _available = client.search_items_result(
+        search_query,
+        item_types=item_type or SEARCH_ITEM_TYPES,
+        limit=None,
     )
-    if not items:
+    filtered = _apply_item_filters(items, item_type=item_type, year=year)
+    shown = filtered if count is None else filtered[:count]
+    filtered_total = len(filtered)
+    if not shown:
         print("No results.")
         return
-    print_item_choices(items)
-    _print_total(len(items), available)
+    print_item_choices(shown)
+    _print_total(len(shown), filtered_total)

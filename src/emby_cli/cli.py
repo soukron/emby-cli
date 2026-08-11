@@ -166,7 +166,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="QUERY",
         dest="item",
-        help="Search media items; optional QUERY, or use with --id / --all "
+        help="Search media items; optional QUERY, or use with --id "
              "(--media-item is an alias)",
     )
     sr_mode.add_argument(
@@ -175,7 +175,7 @@ def build_parser() -> argparse.ArgumentParser:
         const="",
         default=None,
         metavar="QUERY",
-        help="Search libraries; optional QUERY, or use with --id / --all",
+        help="Search libraries; optional QUERY, or use with --id",
     )
     sr.add_argument(
         "--id",
@@ -187,17 +187,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Search query (alternative to QUERY on --item / --library)",
     )
     sr.add_argument(
-        "--all",
-        action="store_true",
-        help="List all media items or libraries",
-    )
-    sr.add_argument(
         "--count",
         "-n",
+        default=str(SEARCH_COUNT_DEFAULT),
+        metavar="N|all",
+        help=(
+            f"Max media item results (default: {SEARCH_COUNT_DEFAULT}); "
+            "use 'all' to list everything"
+        ),
+    )
+    sr.add_argument(
+        "--type",
+        dest="item_type",
+        metavar="TYPE",
+        help="Filter media items by type (e.g. Movie, Episode, Audio, Video)",
+    )
+    sr.add_argument(
+        "--year",
         type=int,
-        default=SEARCH_COUNT_DEFAULT,
-        metavar="N",
-        help=f"Max media item results (default: {SEARCH_COUNT_DEFAULT})",
+        metavar="YYYY",
+        help="Filter media items by production year",
     )
 
     pl = sub.add_parser("play", help=_help_by_name["play"])

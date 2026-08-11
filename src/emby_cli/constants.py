@@ -14,7 +14,7 @@ DOWNLOADABLE_TYPES = ("Movie", "Episode", "Audio", "Video")
 SEARCH_ITEM_TYPES = ",".join(DOWNLOADABLE_TYPES)
 # Library "recently added" / content counts: playable media only (no Studio, etc.).
 SHOW_LIBRARY_ITEM_TYPES = "Movie,Episode,Audio"
-# Default --count for search; also the soft cap that triggers --media-item --all refusal.
+# Default --count for search output when N is not specified.
 SEARCH_COUNT_DEFAULT = 30
 ITEM_FIELDS = "Path,MediaSources,MediaStreams,Size,RunTimeTicks,ProductionYear,DateCreated"
 # Extra fields for `show` detail view.

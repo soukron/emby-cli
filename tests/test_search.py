@@ -1,4 +1,4 @@
-"""Tests for search --item --all total gate."""
+"""Tests for search listing and filters."""
 
 from __future__ import annotations
 
@@ -7,66 +7,42 @@ from unittest.mock import MagicMock
 import pytest
 
 from emby_cli.commands import search as search_mod
-from emby_cli.constants import SEARCH_COUNT_DEFAULT
-
-
-def test_item_all_refuses_when_too_many(capsys):
+def test_item_count_all_lists_everything(capsys):
     client = MagicMock()
-    client.get_items.return_value = {"TotalRecordCount": SEARCH_COUNT_DEFAULT + 1}
-    args = MagicMock(
-        count=SEARCH_COUNT_DEFAULT,
-        id=None,
-        search=None,
-        all=True,
-        item="",
-        library=None,
-    )
-    with pytest.raises(SystemExit) as exc:
-        search_mod.cmd_search(client, args)
-    assert exc.value.code == 1
-    err = capsys.readouterr().err
-    assert f"There are {SEARCH_COUNT_DEFAULT + 1} media items on this server." in err
-    assert "Please narrow the results with a query" in err
-    assert 'emby-cli search --item "title"' in err
-    client.get_all_items.assert_not_called()
-
-
-def test_item_all_lists_when_within_limit(capsys):
-    client = MagicMock()
-    client.get_items.return_value = {"TotalRecordCount": 2}
-    client.get_all_items.return_value = [
+    client.search_items_result.return_value = (
+        [
         {"Id": "a", "Name": "A", "Type": "Movie", "ProductionYear": 2020},
         {"Id": "b", "Name": "B", "Type": "Movie", "ProductionYear": 2021},
-    ]
+        ],
+        2,
+    )
     args = MagicMock(
-        count=SEARCH_COUNT_DEFAULT,
+        count="all",
         id=None,
         search=None,
-        all=True,
         item="",
         library=None,
     )
     search_mod.cmd_search(client, args)
     out = capsys.readouterr().out
     assert "Total: 2" in out
-    assert "out of" not in out
-    client.get_all_items.assert_called_once()
+    client.search_items_result.assert_called_once_with(
+        "",
+        item_types="Movie,Episode,Audio,Video",
+        limit=None,
+    )
 
 
 def test_item_query_shows_out_of_when_truncated(capsys):
     client = MagicMock()
     client.search_items_result.return_value = (
-        [
-            {"Id": "1", "Name": "A", "Type": "Movie", "ProductionYear": 1999},
-            {"Id": "2", "Name": "B", "Type": "Movie", "ProductionYear": 2003},
-        ],
+        [{"Id": str(i), "Name": f"T{i}", "Type": "Movie", "ProductionYear": 2000 + i} for i in range(14)],
         14,
     )
     args = MagicMock(
         count=2,
         id=None,
         search=None,
-        all=False,
         item="matrix",
         library=None,
     )
@@ -88,7 +64,6 @@ def test_item_query_plain_total_when_complete(capsys):
         count=30,
         id=None,
         search=None,
-        all=False,
         item="unique",
         library=None,
     )
@@ -104,15 +79,65 @@ def test_library_shows_out_of_when_truncated(capsys):
         {"Id": f"{i}", "Name": f"Lib{i}", "CollectionType": "movies"}
         for i in range(5)
     ]
-    client.get_items.return_value = {"TotalRecordCount": 0}
     args = MagicMock(
         count=2,
         id=None,
         search=None,
-        all=True,
+        item=None,
+        library="Lib",
+    )
+    search_mod.cmd_search(client, args)
+    out = capsys.readouterr().out
+    assert "Total: 2 (out of 5)" in out
+
+
+def test_item_query_filters_by_type_and_year(capsys):
+    client = MagicMock()
+    client.search_items_result.return_value = (
+        [
+            {"Id": "1", "Name": "Spider-Man", "Type": "Movie", "ProductionYear": 2026},
+            {"Id": "2", "Name": "Spider-Man", "Type": "Episode", "ProductionYear": 2026},
+            {"Id": "3", "Name": "Spider-Man", "Type": "Movie", "ProductionYear": 2024},
+        ],
+        3,
+    )
+    args = MagicMock(
+        count=20,
+        id=None,
+        search=None,
+        item="spider-man",
+        library=None,
+        item_type="Movie",
+        year=2026,
+    )
+    search_mod.cmd_search(client, args)
+    out = capsys.readouterr().out
+    assert "Spider-Man" in out
+    assert "Episode" not in out
+    assert "2024" not in out
+    assert "Total: 1" in out
+    client.search_items_result.assert_called_once_with(
+        "spider-man",
+        item_types="Movie",
+        limit=None,
+    )
+
+
+def test_library_count_all_lists_all_libraries(capsys):
+    client = MagicMock()
+    client.get_libraries.return_value = [
+        {"Id": "1", "Name": "Movies", "CollectionType": "movies"},
+        {"Id": "2", "Name": "Series", "CollectionType": "tvshows"},
+    ]
+    args = MagicMock(
+        count="all",
+        id=None,
+        search=None,
         item=None,
         library="",
     )
     search_mod.cmd_search(client, args)
     out = capsys.readouterr().out
-    assert "Total: 2 (out of 5)" in out
+    assert "Movies" in out
+    assert "Series" in out
+    assert "Total: 2" in out

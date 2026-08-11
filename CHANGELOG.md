@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+Changed:
+
+- `search`: removed `--all`; use `--count all` to list everything.
+- `search --item`: always fetch all paginated results (`limit=None`), then apply `--type` and `--year`, then apply `--count`.
+
 ## 0.5.4
 
 Fixed:

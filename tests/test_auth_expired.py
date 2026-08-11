@@ -46,7 +46,7 @@ def test_main_prints_friendly_message_on_expired_session(capsys, monkeypatch, tm
     )
     monkeypatch.setattr(
         "sys.argv",
-        ["emby-cli", "--server", "http://host:8096", "search", "--library", "--all"],
+        ["emby-cli", "--server", "http://host:8096", "search", "--library", "--count", "all"],
     )
 
     client = EmbyClient("http://host:8096", use_auth_cache=True)

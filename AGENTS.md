@@ -156,7 +156,7 @@ Shared pattern (`mode_args.py`) for **`search`** and **`download`**:
 | `--id` | Emby ID (alternative to QUERY; CSV allowed where documented) |
 | `--search` | Alternative QUERY (do not combine with QUERY embedded in `--item`/`--library`) |
 
-`nargs='?'` + `const=""` so `--item --all` / `--library --id X` do not swallow the next flag as QUERY.
+`nargs='?'` + `const=""` so `--item --count all` / `--library --id X` do not swallow the next flag as QUERY.
 
 `show` is different: `--item`/`--library` plus **mandatory `--id`** (no QUERY / `--search`).
 

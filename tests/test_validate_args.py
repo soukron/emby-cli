@@ -20,12 +20,11 @@ def test_validate_search_requires_exactly_one_selector():
         item=None,
         id=None,
         search=None,
-        all=False,
         count=30,
     )
     assert validate_search_args(args) == (
-        "Provide exactly one of QUERY on --item/--library, "
-        "--search, --id, or --all"
+        "Provide QUERY/--search or --id. "
+        "Use --count all to list everything."
     )
 
 
@@ -41,14 +40,13 @@ def test_validate_search_ok_embedded_query():
     assert validate_search_args(args) is None
 
 
-def test_validate_search_ok_all():
+def test_validate_search_ok_count_all():
     args = argparse.Namespace(
         library="",
         item=None,
         id=None,
         search=None,
-        all=True,
-        count=30,
+        count="all",
     )
     assert validate_search_args(args) is None
 
@@ -59,7 +57,6 @@ def test_validate_search_rejects_embedded_and_search_flag():
         library=None,
         id=None,
         search="other",
-        all=False,
         count=30,
     )
     assert validate_search_args(args) == (
@@ -73,10 +70,50 @@ def test_validate_search_count_positive():
         item="x",
         id=None,
         search=None,
-        all=False,
         count=0,
     )
     assert validate_search_args(args) == "error: --count must be >= 1"
+
+
+def test_validate_search_type_only_with_items():
+    args = argparse.Namespace(
+        library="",
+        item=None,
+        id=None,
+        search=None,
+        count="all",
+        item_type="Movie",
+        year=None,
+    )
+    assert validate_search_args(args) == (
+        "--type/--year can only be used with --item/--media-item"
+    )
+
+
+def test_validate_search_rejects_id_with_filters():
+    args = argparse.Namespace(
+        library=None,
+        item="",
+        id="123",
+        search=None,
+        count=30,
+        item_type="Movie",
+        year=2026,
+    )
+    assert validate_search_args(args) == "--type/--year cannot be used with --id"
+
+
+def test_validate_search_rejects_unknown_type():
+    args = argparse.Namespace(
+        library=None,
+        item="matrix",
+        id=None,
+        search=None,
+        count=30,
+        item_type="Documentary",
+        year=None,
+    )
+    assert validate_search_args(args) == "error: --type must be one of Movie, Episode, Audio, Video"
 
 
 def test_validate_download_media_item_needs_selector(monkeypatch):
@@ -197,7 +234,7 @@ def test_main_search_library_without_selector_skips_auth(capsys, monkeypatch):
     assert exc.value.code == 1
     open_client.assert_not_called()
     err = capsys.readouterr().err
-    assert "Provide exactly one of QUERY on --item/--library" in err
+    assert "Use --count all to list everything" in err
 
 
 def test_main_download_library_without_selector_skips_auth(capsys, monkeypatch):

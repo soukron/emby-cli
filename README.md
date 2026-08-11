@@ -55,9 +55,10 @@ Find movies, episodes, and other media — or list libraries:
 ```bash
 emby-cli search --item "fast and furious"
 emby-cli search --item "fast and furious" --count 5
+emby-cli search --item "spider-man" --type Movie --year 2026
 emby-cli search --item --id 123456
 emby-cli search --library "peliculas"
-emby-cli search --library --all
+emby-cli search --library --count all
 ```
 
 `--item` and `--library` accept the search text directly. You can also pass `--id` when you already know the Emby ID.
