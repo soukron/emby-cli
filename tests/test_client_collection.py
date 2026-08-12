@@ -6,9 +6,14 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from emby_cli.api.collections import COLLECTION_FIELDS, CollectionsService
+from emby_cli.api.collections import (
+    COLLECTION_DETAIL_FIELDS,
+    COLLECTION_FIELDS,
+    CollectionsService,
+)
 from emby_cli.api.items import ItemsService
 from emby_cli.client import EmbyClient
+from emby_cli.data_cache import load_json, save_json
 
 
 def _client() -> EmbyClient:
@@ -85,6 +90,20 @@ def test_collection_search_is_local_case_insensitive():
         assert client.collections.search("WAR") == [{"Id": "1", "Name": "Star Wars"}]
 
 
+def test_collections_no_cache_bypasses_read_and_refreshes_disk(tmp_path, monkeypatch):
+    monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
+    client = _client()
+    client.use_data_cache = True
+    key = client.collections._catalog_key()
+    save_json(key, [{"Id": "old"}])
+    client.no_data_cache = True
+    with patch.object(client.items, "list_all", return_value=[{"Id": "fresh"}]) as listing:
+        assert client.collections.list() == [{"Id": "fresh"}]
+    listing.assert_called_once()
+    client.no_data_cache = False
+    assert load_json(key) == [{"Id": "fresh"}]
+
+
 def test_create_collection_uses_query_params_no_body_and_one_attempt():
     client = _client()
     response = MagicMock()
@@ -134,6 +153,30 @@ def test_add_and_remove_collection_items_use_csv_params():
         params={"Ids": "3,4"},
     )
     assert invalidate.call_args_list == [call("box"), call("box")]
+
+
+def test_collection_mutation_invalidates_catalog_detail_and_members(tmp_path, monkeypatch):
+    monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
+    client = _client()
+    catalog_key = client.collections._catalog_key()
+    item_key = client.items._key("box", None)
+    detail_key = client.items._key("box", fields=COLLECTION_DETAIL_FIELDS)
+    members_key = client.items._list_key(
+        parent_id="box",
+        item_types=None,
+        fields=None,
+        recursive=True,
+        sort_by="SortName",
+        sort_order="Ascending",
+    )
+    for key in (catalog_key, item_key, detail_key, members_key):
+        save_json(key, {"cached": True})
+
+    with patch.object(client, "_post"):
+        client.collections.add_items("box", ["1"])
+
+    for key in (catalog_key, item_key, detail_key, members_key):
+        assert load_json(key) is None
 
 
 def test_delete_collection_refuses_non_boxset():

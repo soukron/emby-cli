@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased
+
+Added:
+
+- `collection search` and `collection show` for paginated `BoxSet` discovery,
+  name/ID resolution, metadata, and generic member listings.
+- `collection create`, `rename`, `add-item`, `remove-item`, and guarded `delete`
+  operations. Delete requires interactive confirmation unless `--yes` is passed.
+- Repeatable/CSV `--item` values for collection membership. Movie members are
+  supported initially; invalid and non-Movie references are reported while valid
+  members continue, with a non-zero exit when any reference fails.
+- `collection rename --short-name` to update Emby's `SortName` together with
+  `Name`.
+
+Changed:
+
+- `EmbyClient` now composes entity-oriented `ItemsService` and
+  `CollectionsService` modules while retaining one shared HTTP/auth/retry/cache
+  transport. This is the scaffold for future people, genre, studio, tag, and
+  music-aware operations.
+- Metadata cache now supports exact invalidation. Collection mutations bypass
+  stale reads and invalidate catalog, detail, and member entries immediately.
+- Operational HTTP 403 responses from collection commands produce a concise
+  metadata-permission error instead of a traceback.
+
+Safety:
+
+- Collection creation is not retried after a server error, avoiding uncertain
+  duplicate creation.
+- Collection deletion verifies `Type=BoxSet` before calling Emby's generic item
+  deletion endpoint; member deletion endpoints are never called.
+
 ## 0.6.1
 
 Fixed:

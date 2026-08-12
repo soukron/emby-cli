@@ -3,7 +3,7 @@
 [PyPI](https://pypi.org/project/emby-cli/)
 · [License: CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)
 
-Search, browse, play, and download media from your [Emby](https://emby.media/) server — from the terminal. Only HTTP access to the server is needed (typically port 8096). No SSH, no shared folders, no rsync.
+Search, browse, play, download media, and manage collections on your [Emby](https://emby.media/) server — from the terminal. Only HTTP access to the server is needed (typically port 8096). No SSH, no shared folders, no rsync.
 
 ```bash
 pip install emby-cli
@@ -81,6 +81,48 @@ emby-cli show --library --id 614156
 emby-cli show --item --id 123456 --no-cache
 ```
 
+### Collections
+
+Search collections (`BoxSet`) or inspect a collection and all its existing
+members. A positional name is a case-insensitive substring; use `--id` when a
+name is ambiguous:
+
+```bash
+emby-cli collection search
+emby-cli collection search "star" --order-by year --desc
+emby-cli collection show "Star Wars"
+emby-cli collection show --id 1234
+```
+
+Create, rename, and manage Movie members:
+
+```bash
+emby-cli collection create "Star Wars" --item 456,789
+emby-cli collection rename --id 1234 "Star Wars Saga"
+emby-cli collection rename --id 1234 "Star Wars Saga" --short-name "Star Wars 01"
+emby-cli collection add-item --id 1234 --item 456,789 --item 101
+emby-cli collection remove-item "Star Wars Saga" --item 456,789
+```
+
+`--item` is repeatable and accepts comma-separated IDs. In this first version,
+only items whose Emby type is `Movie` can be added or removed. Existing members
+of other types, including music, are still displayed by `collection show`.
+Invalid, missing, ambiguous, or non-Movie members are reported individually;
+valid members in the same command are still processed, and the command exits
+non-zero if any member failed.
+
+Deleting is guarded by an interactive confirmation and verifies that the target
+is a `BoxSet`. Use `--yes` for deliberate non-interactive use:
+
+```bash
+emby-cli collection delete "Star Wars Saga"
+emby-cli collection delete --id 1234 --yes
+```
+
+Deleting the collection removes the virtual `BoxSet`, not its member media.
+Collection mutations require an Emby user or API key with permission to edit
+metadata (typically an administrator).
+
 
 
 ### Play
@@ -134,13 +176,16 @@ Library downloads match the library **name** (case-insensitive, unique match req
 
 ### Data cache
 
-Read-only commands (`search`, `show`, `play`, `info`) use a JSON disk cache under
+Read-only commands (`search`, `show`, `play`, `info`, `collection search`, and
+`collection show`) use a JSON disk cache under
 `~/.cache/emby-cli/data` (or under `EMBY_CACHE_DIR/data`).
 
 - Default TTL: **600 seconds** (`EMBY_DATA_CACHE_TTL` to override).
 - `--no-cache`: do not read cache; call API directly and refresh cache on disk.
 - Cache keys are isolated by **server URL + user ID** to prevent cross-server mixing.
 - `download` never uses this data cache.
+- Collection mutations resolve against fresh server state and invalidate affected
+  collection cache entries immediately.
 
 ---
 

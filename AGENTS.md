@@ -9,7 +9,7 @@ End-user documentation lives in [`README.md`](README.md). This file is for **mai
 
 ## What this project is
 
-CLI to **search**, **inspect** (`show`), **play**, and **download/backup** original media files from an **Emby** server over its REST API (typically HTTP port `8096`). No SSH, no shared mounts, no rsync.
+CLI to **search**, **inspect** (`show`), **play**, **download/backup** original media files, and **manage collections** on an **Emby** server over its REST API (typically HTTP port `8096`). No SSH, no shared mounts, no rsync.
 
 | | |
 |--|--|
@@ -34,12 +34,16 @@ CLI to **search**, **inspect** (`show`), **play**, and **download/backup** origi
 ├── src/emby_cli/           # application package
 │   ├── cli.py              # argparse + main() + pre-auth validation
 │   ├── client.py           # EmbyClient: HTTP, auth, browse, download/HLS
+│   ├── api/                # Entity services sharing the EmbyClient transport
+│   │   ├── items.py        # Generic item list/get/update/delete
+│   │   └── collections.py  # BoxSet CRUD and membership endpoints
 │   ├── auth_cache.py       # auth.json contexts (kubeconfig-style)
 │   ├── data_cache.py       # JSON cache for read-only metadata calls
 │   ├── credentials.py      # resolve server / user / password
 │   ├── mode_args.py        # --item / --library / QUERY helpers
 │   ├── resolve.py          # title lines, pick_best, choice tables
 │   ├── download_ops.py     # download loop, skip, library matching
+│   ├── collection_ops.py   # collection/member resolution + CSV validation
 │   ├── output.py           # stdout/stderr messages + Stats / exit codes
 │   ├── util.py             # paths, sizes, skip, ffmpeg remux
 │   ├── constants.py        # retries, types, field lists, CLIENT_NAME
@@ -108,22 +112,35 @@ cli.main
   ├─ open EmbyClient + ensure session
   └─ commands.<cmd>
         ├─ validate_*_args    # intentional duplicate (defense in depth)
-        └─ EmbyClient / resolve / download_ops / output
+        └─ EmbyClient / api services / resolve / *_ops / output
 ```
 
 | Concern | Primary modules |
 |---------|-----------------|
-| HTTP, retries, auth, browse, binary/HLS download | `client.py` |
+| HTTP transport, retries, auth, browse, binary/HLS download | `client.py` |
+| Generic item API + collection API | `api/items.py`, `api/collections.py` |
 | Session store on disk | `auth_cache.py` |
 | Metadata cache on disk | `data_cache.py` |
 | Resolving server/user/password from flags/env/TTY/cache | `credentials.py` |
 | `--item` / `--library` / embedded QUERY | `mode_args.py` + command modules |
 | Title-line resolution (`Movie (2010)`, `Show S01E02`) | `resolve.py` |
 | Download orchestration, skip, library match | `download_ops.py` |
+| Collection/member resolution and CSV policy | `collection_ops.py` |
 | User-visible messages and exit codes | `output.py` |
 | New flag or subcommand | `cli.py` + `commands/…` + `help.COMMAND_SUMMARIES` |
 
-`client.py` is large on purpose today (HTTP + Emby ops + download). Prefer small, tested helpers over a big rewrite unless a dedicated refactor is planned. See historical notes in maintainer discussions; do not split every endpoint into its own file without need.
+`EmbyClient` owns one `requests.Session`, URL normalization, auth/reauth, retries,
+and cache switches. Entity services are composed as `client.items` and
+`client.collections`; they must reuse that transport rather than create sessions
+or duplicate auth. Add a service when there is a real entity boundary—do not
+introduce a speculative `BaseService` hierarchy or split every endpoint into its
+own file. Existing browse/download methods remain on `client.py` until a scoped
+migration justifies moving them.
+
+Collection metadata updates use the safe pattern: uncached full item GET → merge
+only requested fields → `POST /Items/{id}` with the complete resulting object.
+`POST /Collections` uses query parameters and `retries=1`; retrying creation can
+produce duplicates when the server processed a request but lost its response.
 
 ---
 
@@ -136,7 +153,7 @@ cli.main
 - `config` — `current-server`, `get-servers`, `use-server`, `view` (tokens redacted).
 - Other commands: no `--server` → active context; cache hit → reuse token; miss + credentials → transparent login; **HTTP 401** with password available → invalidate cache and re-authenticate **once per top-level request** (no infinite reauth loop).
 - If 401 cannot be recovered (no password, or re-login rejected): raise `AuthenticationError`, clear the stale cache entry, and let `main` print a short stderr message (no traceback).
-- Invalid selectors for `search` / `download` / `play` / `show` are rejected **before** opening a client.
+- Invalid selectors for `search` / `download` / `play` / `show` / `collection` are rejected **before** opening a client.
 
 ### Intentional duplicate validation
 
@@ -162,6 +179,23 @@ Shared pattern (`mode_args.py`) for **`search`** and **`download`**:
 `nargs='?'` + `const=""` so `--item --count all` / `--library --id X` do not swallow the next flag as QUERY.
 
 `show` is different: `--item`/`--library` plus **mandatory `--id`** (no QUERY / `--search`).
+
+### Collections
+
+- `collection show/delete/rename/add-item/remove-item` select a collection with
+  one positional QUERY or `--id` (exact/unique prefix), never both. There is no
+  redundant `--collection` flag.
+- Name resolution is case-insensitive substring matching; ambiguity prints a
+  candidate table and exits 1.
+- `add-item` / `remove-item` accept repeated, CSV-aware `--item` values. The
+  allowed-type policy is `COLLECTION_MEMBER_TYPES` (`Movie` initially) so music
+  and other existing Emby types can be enabled without changing transport.
+- Member failures are independent: report each `error:` on stderr, submit valid
+  IDs once, print `Done. ok=… error=…`, and exit 1 if any failed.
+- `rename` changes only `Name`; `--short-name` additionally changes `SortName`.
+- `delete` re-fetches and verifies `Type=BoxSet`, prompts on a TTY, and requires
+  `--yes` without interactive stdin. Never weaken this guard or call delete on a
+  selector that did not resolve uniquely.
 
 ### Output streams
 
@@ -194,8 +228,9 @@ Identity headers / User-Agent: `emby-cli/<version>` (`constants.CLIENT_NAME`). `
 
 ### Data cache isolation
 
-- Read-only commands (`search`, `show`, `play`, `info`) can use disk cache for metadata.
+- Read-only commands (`search`, `show`, `play`, `info`, collection search/show) can use disk cache for metadata.
 - `download` must bypass data cache.
+- Collection mutations resolve uncached and invalidate catalog/detail/member keys immediately.
 - Cache keys must include **server URL + resolved user ID** (and endpoint params) so
   data from one server is never served for another.
 - `--no-cache` means “do not read cache”, but still fetch from API and refresh disk.
@@ -204,6 +239,8 @@ Identity headers / User-Agent: `emby-cli/<version>` (`constants.CLIENT_NAME`). `
 
 - `download`: non-zero if `error > 0`; with `--from-file` also if `not_found > 0`.
 - `--dry-run` still runs the path; planned items count as `ok` in the Done summary.
+- Collection add/remove/create may apply valid members despite invalid peers; any
+  reported member error makes the final exit code non-zero.
 
 ---
 
@@ -295,6 +332,8 @@ Maintainers with a local wrapper Makefile may use an equivalent `make release VE
 | Task | Start here |
 |------|------------|
 | Auth, retry, browse, download/HLS | `client.py` |
+| Generic item/collection endpoints | `api/items.py`, `api/collections.py` |
+| Collection matching/member policy | `collection_ops.py`, `commands/collection.py` |
 | Item/library QUERY modes | `mode_args.py`, `cli.py`, `commands/{search,show,download,play}.py` |
 | New subcommand or flag | `cli.py`, `commands/…`, `help.COMMAND_SUMMARIES` |
 | `show` detail / library recents | `commands/show.py`, `constants.SHOW_*` |
