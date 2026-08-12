@@ -21,7 +21,7 @@ class ItemsService:
         uid = self.client.resolve_user_id()
         return (
             f"v2:item:{self.client.server_url}:{uid}:"
-            f"{item_id}:{fields or ITEM_FIELDS}"
+            f"{item_id}:{fields or 'all'}"
         )
 
     def _list_key(
@@ -96,9 +96,10 @@ class ItemsService:
             cached = self.client._cache_read(key)
             if isinstance(cached, dict):
                 return cached
+        params = {"Fields": fields} if fields else None
         data = self.client._get(
             f"/Users/{uid}/Items/{item_id}",
-            params={"Fields": fields or ITEM_FIELDS},
+            params=params,
         ).json()
         if use_cache:
             self.client._cache_write(key, data)

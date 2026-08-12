@@ -47,6 +47,20 @@ def test_items_list_all_paginates():
     assert get.call_args_list[1].kwargs["params"]["StartIndex"] == 200
 
 
+def test_items_get_without_fields_requests_complete_object():
+    client = _client()
+    response = MagicMock()
+    response.json.return_value = {
+        "Id": "1",
+        "Type": "BoxSet",
+        "Genres": ["Sci-Fi"],
+    }
+    with patch.object(client, "_get", return_value=response) as get:
+        item = client.items.get("1", use_cache=False)
+    assert item["Genres"] == ["Sci-Fi"]
+    get.assert_called_once_with("/Users/uid/Items/1", params=None)
+
+
 def test_collections_list_uses_boxset_fields():
     client = _client()
     with patch.object(client.items, "list_all", return_value=[{"Id": "1"}]) as list_all:

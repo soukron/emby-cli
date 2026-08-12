@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 
 COLLECTION_FIELDS = "ChildCount,ProductionYear,DisplayOrder,SortName"
+COLLECTION_DETAIL_FIELDS = COLLECTION_FIELDS + ",Overview"
 
 
 class CollectionsService:
@@ -105,4 +106,5 @@ class CollectionsService:
     def invalidate(self, collection_id: str) -> None:
         self.invalidate_catalog()
         self.client.items.invalidate(collection_id)
+        self.client.items.invalidate(collection_id, fields=COLLECTION_DETAIL_FIELDS)
         self.client.items.invalidate_list(parent_id=collection_id)

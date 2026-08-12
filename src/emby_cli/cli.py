@@ -14,6 +14,7 @@ warnings.filterwarnings("ignore", message="urllib3 v2 only supports OpenSSL")
 import requests
 
 from emby_cli.client import AuthenticationError, EmbyClient
+from emby_cli.commands.collection import cmd_collection, validate_collection_args
 from emby_cli.commands.config import cmd_config
 from emby_cli.commands.download import cmd_download, validate_download_args
 from emby_cli.commands.help import COMMAND_SUMMARIES, cmd_help
@@ -76,6 +77,84 @@ def build_parser() -> argparse.ArgumentParser:
         "view",
         help="Display credentials file (tokens redacted)",
     )
+
+    col = sub.add_parser("collection", help=_help_by_name["collection"])
+    col_sub = col.add_subparsers(dest="collection_command", required=True)
+
+    col_search = col_sub.add_parser("search", help="Search collections")
+    col_search.add_argument("query", nargs="?", metavar="QUERY")
+    col_search.add_argument(
+        "--count",
+        "-n",
+        default=str(SEARCH_COUNT_DEFAULT),
+        metavar="N|all",
+        help=f"Max results (default: {SEARCH_COUNT_DEFAULT}); use 'all' for every result",
+    )
+    col_search.add_argument(
+        "--order-by",
+        choices=["name", "id", "items", "year"],
+        default=None,
+    )
+    col_search.add_argument("--desc", action="store_true")
+    col_search.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass disk cache read and refresh it from API",
+    )
+
+    col_show = col_sub.add_parser("show", help="Show a collection and its members")
+    col_show.add_argument("query", nargs="?", metavar="QUERY")
+    col_show.add_argument("--id", help="Collection ID or unique ID prefix")
+    col_show.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass disk cache read and refresh it from API",
+    )
+
+    col_create = col_sub.add_parser("create", help="Create a collection")
+    col_create.add_argument("name", metavar="NAME")
+    col_create.add_argument(
+        "--item",
+        dest="items",
+        action="append",
+        default=[],
+        metavar="ID[,ID...]",
+        help="Initial Movie ID(s); repeatable and CSV-aware",
+    )
+
+    col_delete = col_sub.add_parser("delete", help="Delete a collection")
+    col_delete.add_argument("query", nargs="?", metavar="QUERY")
+    col_delete.add_argument("--id", help="Collection ID or unique ID prefix")
+    col_delete.add_argument(
+        "--yes",
+        action="store_true",
+        help="Delete without interactive confirmation",
+    )
+
+    col_rename = col_sub.add_parser("rename", help="Rename a collection")
+    col_rename.add_argument("query", nargs="?", metavar="QUERY")
+    col_rename.add_argument("new_name", metavar="NEW_NAME")
+    col_rename.add_argument("--id", help="Collection ID or unique ID prefix")
+    col_rename.add_argument(
+        "--short-name",
+        help="Also update Emby's SortName field",
+    )
+
+    for name, summary in (
+        ("add-item", "Add Movie items to a collection"),
+        ("remove-item", "Remove Movie items from a collection"),
+    ):
+        member_parser = col_sub.add_parser(name, help=summary)
+        member_parser.add_argument("query", nargs="?", metavar="QUERY")
+        member_parser.add_argument("--id", help="Collection ID or unique ID prefix")
+        member_parser.add_argument(
+            "--item",
+            dest="items",
+            action="append",
+            required=True,
+            metavar="ID[,ID...]",
+            help="Movie ID(s); repeatable and CSV-aware",
+        )
 
     dl = sub.add_parser(
         "download",
@@ -353,6 +432,8 @@ def _open_client(args: argparse.Namespace) -> EmbyClient:
 
 
 def _validate_command_args(command: str, args: argparse.Namespace) -> str | None:
+    if command == "collection":
+        return validate_collection_args(args)
     if command == "search":
         return validate_search_args(args)
     if command == "download":
@@ -399,6 +480,7 @@ def main() -> None:
 
     client = _open_client(args)
     commands = {
+        "collection": cmd_collection,
         "download": cmd_download,
         "search": cmd_search,
         "play": cmd_play,
@@ -408,6 +490,20 @@ def main() -> None:
         commands[args.command](client, args)
     except AuthenticationError as exc:
         print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    except requests.HTTPError as exc:
+        response = getattr(exc, "response", None)
+        if (
+            args.command == "collection"
+            and response is not None
+            and response.status_code == 403
+        ):
+            print(
+                "error: collection operation requires metadata edit permissions",
+                file=sys.stderr,
+            )
+        else:
+            print(f"error: {exc}", file=sys.stderr)
         sys.exit(1)
 
 

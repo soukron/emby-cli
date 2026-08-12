@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from emby_cli.cli import main
+from emby_cli.commands.collection import validate_collection_args
 from emby_cli.commands.download import DownloadOpts, validate_download_args
 from emby_cli.commands.play import validate_play_args
 from emby_cli.commands.search import validate_search_args
@@ -26,6 +27,28 @@ def test_validate_search_item_requires_selector_without_count_all():
         "Provide QUERY/--search or --id. "
         "Use --count all to list everything."
     )
+
+
+def test_validate_collection_requires_exactly_one_selector():
+    assert validate_collection_args(argparse.Namespace(
+        collection_command="show", query=None, id=None,
+    )) == "provide exactly one collection QUERY or --id"
+    assert validate_collection_args(argparse.Namespace(
+        collection_command="show", query="Saga", id="1",
+    )) == "provide exactly one collection QUERY or --id"
+
+
+def test_validate_collection_rejects_empty_csv_member_before_auth():
+    assert validate_collection_args(argparse.Namespace(
+        collection_command="add-item", query=None, id="1", items=["2,,3"],
+    )) == "--item contains an empty ID"
+
+
+def test_validate_collection_accepts_repeated_csv_members():
+    assert validate_collection_args(argparse.Namespace(
+        collection_command="remove-item", query="Saga", id=None,
+        items=["1,2", "3"],
+    )) is None
 
 
 def test_validate_search_library_allows_empty_selector_with_count_n():
@@ -351,3 +374,13 @@ def test_main_play_without_selector_skips_auth(capsys, monkeypatch):
     assert "Provide exactly one of --id or QUERY/--search" in (
         capsys.readouterr().err
     )
+
+
+def test_main_collection_invalid_selector_skips_auth(capsys, monkeypatch):
+    monkeypatch.setattr("sys.argv", ["emby-cli", "collection", "show"])
+    with patch("emby_cli.cli._open_client") as open_client:
+        with pytest.raises(SystemExit) as exc:
+            main()
+    assert exc.value.code == 1
+    open_client.assert_not_called()
+    assert "exactly one collection QUERY or --id" in capsys.readouterr().err

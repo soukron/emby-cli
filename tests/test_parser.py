@@ -11,7 +11,7 @@ def test_build_parser_subcommands():
     parser = build_parser()
     subs = parser._subparsers._group_actions[0].choices
     assert set(subs) == {
-        "help", "login", "logout", "config", "download", "search", "show", "play", "version", "info",
+        "help", "login", "logout", "config", "collection", "download", "search", "show", "play", "version", "info",
     }
 
 
@@ -356,3 +356,40 @@ def test_version_subcommand_parses_without_server(monkeypatch):
     args = parser.parse_args(["version"])
     assert args.command == "version"
     assert args.server is None
+
+
+def test_collection_show_query_and_id_forms():
+    parser = build_parser()
+    by_query = parser.parse_args(["collection", "show", "Star Wars"])
+    by_id = parser.parse_args(["collection", "show", "--id", "123"])
+    assert by_query.query == "Star Wars"
+    assert by_query.id is None
+    assert by_id.query is None
+    assert by_id.id == "123"
+
+
+def test_collection_rename_id_and_short_name():
+    args = build_parser().parse_args([
+        "collection", "rename", "--id", "123", "New Name",
+        "--short-name", "New 01",
+    ])
+    assert args.query is None
+    assert args.id == "123"
+    assert args.new_name == "New Name"
+    assert args.short_name == "New 01"
+
+
+def test_collection_items_are_repeatable_csv_values():
+    args = build_parser().parse_args([
+        "collection", "add-item", "--id", "123",
+        "--item", "456,789", "--item", "101",
+    ])
+    assert args.items == ["456,789", "101"]
+
+
+def test_collection_delete_yes():
+    args = build_parser().parse_args([
+        "collection", "delete", "Star Wars", "--yes",
+    ])
+    assert args.query == "Star Wars"
+    assert args.yes is True
