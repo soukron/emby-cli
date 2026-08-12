@@ -37,6 +37,7 @@ class EmbyItem(TypedDict, total=False):
 
     Id: str
     Name: str
+    SortName: str
     Type: str
     ProductionYear: int
     SeriesName: str
@@ -50,6 +51,7 @@ class EmbyItem(TypedDict, total=False):
     Container: str
     Status: str
     ChildCount: int
+    DisplayOrder: str
     RecursiveItemCount: int
     Path: str
     RunTimeTicks: int

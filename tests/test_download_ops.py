@@ -6,12 +6,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from emby_cli.constants import SHOW_LIBRARY_ITEM_TYPES
-from emby_cli.download_ops import (
-    download_items,
-    find_library,
-    library_rows,
-    match_libraries,
-)
+from emby_cli.download_ops import find_library, library_rows, match_libraries
+from emby_cli.item_ops import download_items
 
 LIBS = [
     {"Id": "aaaaaaaa-1111", "Name": "Movies", "CollectionType": "movies"},
@@ -99,7 +95,7 @@ def test_download_items_accumulates_results_and_uses_multi_item_progress():
     client = MagicMock()
     items = [{"Id": "1"}, {"Id": "2"}, {"Id": "3"}]
     with patch(
-        "emby_cli.download_ops.download_one_item",
+        "emby_cli.item_ops.download_one_item",
         side_effect=["ok", "skip", "error"],
     ) as download_one:
         stats = download_items(

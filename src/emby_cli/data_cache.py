@@ -60,3 +60,13 @@ def save_json(key: str, value: object) -> None:
         "value": value,
     }
     path.write_text(json.dumps(payload, ensure_ascii=True) + "\n", encoding="utf-8")
+
+
+def delete_json(key: str) -> None:
+    """Delete one cached value if present."""
+    try:
+        _cache_path(key).unlink(missing_ok=True)
+    except OSError:
+        # Cache invalidation must never turn a successful server mutation
+        # into a failed CLI operation.
+        pass

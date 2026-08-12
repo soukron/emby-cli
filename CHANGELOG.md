@@ -1,10 +1,97 @@
 # Changelog
 
+## Unreleased
+
+## 0.7.0
+
+### Added
+
+- `collection search` and `collection show` for paginated `BoxSet` discovery,
+  name/ID resolution, metadata, and generic member listings.
+- `collection list` as an alias for `collection search --count all`.
+- `collection create`, `rename`, `add-item`, `remove-item`, and guarded `delete`
+  operations. Delete requires interactive confirmation unless `--yes` is passed.
+- Repeatable/CSV `--item` values for collection membership. `create --type`
+  selects the expected member type (`movie` default, `audio`/`music`, etc.).
+- `collection rename --short-name` to update Emby's `SortName` together with
+  `Name`.
+- `collection set KEY=VALUE …` to update collection metadata (`year`,
+  `name`, `short-name`, `display-order`, `overview`). Parent-level
+  `--id` is supported before the subcommand.
+- `ItemsService.merge_and_update()` for safe GET→merge→POST metadata edits.
+- `library list`, `library search`, and `library show` for read-only library view
+  discovery and inspection (`/Users/{uid}/Views`). `library list` is an alias for
+  `library search --count all`. Supports `--type`, `--order-by`, and parent/subcommand
+  `--id` like collections.
+- `item list`, `item search`, and `item show` for read-only media discovery and
+  inspection via `ItemsService.list_items()`. `item list` is an alias for
+  `item search --count all`. Supports `--type`, `--year`, `--order-by`, and
+  parent/subcommand `--id`.
+- `item download`, `library download`, and `collection download` for bulk and
+  single-item downloads via shared `item_ops` helpers. Library and collection
+  downloads write into `output/<name>/`; items use flat filenames by default.
+- `item download --from-file` for batch downloads from a title list file.
+- `--mirror-path` and `EMBY_PATH_STRIP` / `--path-strip` to recreate server
+  subdirectories under the output folder when needed.
+- `library play` and `collection play` to launch an external player for every
+  playable item in a library view or collection, with optional `--order-by`.
+- `--parse-query` on `item search` and `item show` to interpret title-line syntax
+  (`Movie (1999)`, `Show S01E01`). Default is strict display-name search.
+- `--no-parse-query` on `item play` and `item download` to resolve QUERY via Emby
+  search instead of title-line parsing (default: parse for play/download).
+- `Series` column in item search tables when results include episodes.
+- `--order-by added-date` for sorting by library add date (`DateCreated`).
+- Shared detail renderers in `detail_output.py` for `item show` and `library show`.
+
+### Changed
+
+- `collection create` / `add-item` / `remove-item`: `create --type` selects the
+  expected member Emby type (`movie` default, `audio`/`music`, `episode`/`tv`,
+  `video`). `add-item` / `remove-item` accept any supported member type without
+  `--type`. `create` skips the API call when every `--item` fails validation.
+- `item list` / `item search`: `--order-by` adds `release-date` (`PremiereDate`),
+  `added-date` (`DateCreated`), `resolution` (`Resolution,SortName`), and `size`
+  (`Size,SortName`, same as Emby Web for movies).
+- `item search`, `item list`, and `item show` no longer parse QUERY by default;
+  use `--parse-query` for structured title lines or `--year` to narrow results.
+- Strict catalog search filters by display name after Emby recall (phrase match for
+  multi-word queries; episode codes like `S01E01` must prefix the display name).
+- Renamed item `--order-by added` to `added-date`.
+- `library play` and `collection play`: optional `--order-by` / `--desc` using the
+  same item sort keys (`year`, `name`, `id`, `release-date`, `added-date`,
+  `resolution`, `size`).
+- Download orchestration, skip logic, and item loops now live in `item_ops.py`;
+  `library play` / `collection play` list members via the same
+  `ItemListingQuery` + `fetch_item_listing()` path as `item list/search`
+  (scoped with `parent_id`).
+  `download_ops.py` retains library name/id matching only.
+- `EmbyClient` now composes entity-oriented `ItemsService`,
+  `CollectionsService`, and `LibrariesService` modules while retaining one shared HTTP/auth/retry/cache
+  transport.
+- Metadata cache now supports exact invalidation. Collection mutations bypass
+  stale reads and invalidate catalog, detail, and member entries immediately.
+- Operational HTTP 403 responses from collection commands produce a concise
+  metadata-permission error instead of a traceback.
+
+### Removed
+
+- Top-level `search`, `show`, `play`, and `download` commands. Use the
+  corresponding `item`, `library`, or `collection` subcommands instead.
+- The `EMBY_ITEM_ID` environment fallback. Pass a positional QUERY or explicit
+  `--id` to `item play` and `item download`.
+
+### Safety
+
+- Collection creation is not retried after a server error, avoiding uncertain
+  duplicate creation.
+- Collection deletion verifies `Type=BoxSet` before calling Emby's generic item
+  deletion endpoint; member deletion endpoints are never called.
+
 ## 0.6.1
 
 Fixed:
 
-- `tests/test_search.py`: normalize imports so Ruff passes consistently in CI and local `make lint`.
+- Test import normalization so Ruff passes consistently in CI and local `make lint`.
 
 Changed:
 

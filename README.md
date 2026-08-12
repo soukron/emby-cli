@@ -3,224 +3,213 @@
 [PyPI](https://pypi.org/project/emby-cli/)
 · [License: CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)
 
-Search, browse, play, and download media from your [Emby](https://emby.media/) server — from the terminal. Only HTTP access to the server is needed (typically port 8096). No SSH, no shared folders, no rsync.
+Search, browse, play, and download media from an [Emby](https://emby.media/)
+server without leaving the terminal. You only need HTTP access to Emby (usually
+port 8096): no SSH, shared folders, or rsync.
 
 ```bash
 pip install emby-cli
 ```
 
----
-
-## Quick start
-
-**1. Log in once** (username + password, or an API key):
+## Start in 60 seconds
 
 ```bash
+# Log in once; the saved session is reused by later commands
 emby-cli login --server http://emby:8096 --username you
-# prompted for password if not set
-```
 
-Your session is saved locally. Later commands reuse it, so you usually do not need to pass `--server` again.
-
-**2. Check the connection:**
-
-```bash
+# Check the connection, find a title, and play it
 emby-cli info
+emby-cli item search "matrix"
+emby-cli item play "matrix (1999)" --pick-best-item
 ```
 
-**3. Search and play:**
+Run `emby-cli help` for the command list or `emby-cli <command> -h` for the
+options of a command.
+
+## The command model
+
+Commands are grouped by what you want to work with:
+
+| Scope | Browse | Inspect | Play or download |
+| --- | --- | --- | --- |
+| Media | `item list`, `item search` | `item show` | `item play`, `item download` |
+| Libraries | `library list`, `library search` | `library show` | `library play`, `library download` |
+| Collections | `collection list`, `collection search` | `collection show` | `collection play`, `collection download` |
+
+Most commands accept either a readable query or an exact Emby ID:
 
 ```bash
-emby-cli search --item "matrix"
-emby-cli play --item "matrix (1999)" --pick-best-item
+emby-cli item show "The Matrix (1999)" --parse-query
+emby-cli item show --id 123456
 ```
 
-Use `emby-cli help` for the command list, and `emby-cli <command> -h` for options.
+Use a query while exploring and switch to `--id` when you need an unambiguous,
+repeatable command. `item play --id` and `item download --id` also accept a
+comma-separated list such as `--id 111,222,333`.
 
----
+`list` returns all results. `search [QUERY]` defaults to 30 and can be adjusted
+with `--count`; use `--count all` to remove the limit.
 
+## Common workflows
 
-
-## Everyday use
-
-
-
-### Server info
+### Find, inspect, and play
 
 ```bash
-emby-cli version    # CLI version (and Emby version when connected)
-emby-cli info       # user, server, library count, content totals
+# Narrow the search
+emby-cli item search "spider-man" --type movie --year 2017
+
+# Inspect the result, then open it in your preferred player
+emby-cli item show --id 123456
+emby-cli item play --id 123456 --player vlc --wait
 ```
 
-
-
-### Search
-
-Find movies, episodes, and other media — or list libraries:
+Item queries use strict name matching after Emby returns candidates. Structured
+queries are opt-in when searching and showing:
 
 ```bash
-emby-cli search --item "fast and furious"
-emby-cli search --item "fast and furious" --count 5
-emby-cli search --item "spider-man" --type Movie --year 2017
-emby-cli search --item --id 123456
-emby-cli search --library "peliculas"
-emby-cli search --library --count all
-emby-cli search --library --order-by items --desc --count 1
-emby-cli search --item "matrix" --order-by resolution --desc --no-cache
+emby-cli item search "Matrix (1999)" --parse-query
+emby-cli item search "Californication S01E01" --parse-query
 ```
 
-`--item` and `--library` accept the search text directly. You can also pass `--id` when you already know the Emby ID.
+`item play` and `item download` understand structured title lines by default.
+Use `--no-parse-query` when parentheses or episode-like text are part of the
+literal title. If several versions match, `--pick-best-item` chooses the best
+quality up to 1080p.
 
-### Show details
+Set `EMBY_PLAYER` if your player is not detected automatically.
 
-Inspect one title or one library by Emby ID (use `search` first if you need to find the ID):
+### Download with confidence
+
+Preview a large operation first, then choose a destination:
 
 ```bash
-emby-cli show --item --id 123456
-emby-cli show --library --id 614156
-emby-cli show --item --id 123456 --no-cache
+emby-cli item download "breaking bad S01E01" --dry-run
+emby-cli item download --id 123456 --output ./downloads
+emby-cli item download --from-file titles.txt --dry-run
+emby-cli library download "peliculas 4k" --output ./downloads
 ```
 
+Lines passed as a query or read from `--from-file` may describe a movie, an
+episode, or a complete season:
 
+```text
+Movie (2010)
+Show S01E05
+Show S01
+```
 
-### Play
+Useful download options:
 
-Open a title in an external player (VLC, mpv, IINA, …):
+| Option | Purpose |
+| --- | --- |
+| `-n`, `--dry-run` | Resolve titles without writing files |
+| `-o`, `--output` | Choose the output folder (default: `./downloads`) |
+| `-f`, `--force` | Replace a matching local file |
+| `--mirror-path` | Recreate source subdirectories under the output folder |
+| `--path-strip` | Remove a server path prefix when mirroring |
+| `--pick-best-item` | Resolve multiple versions automatically |
+| `-m`, `--method` | Select `download`, `stream`, or `hls` |
+
+A wrong year or an ambiguous match stops and displays the candidates instead of
+guessing. Library downloads also require a unique, case-insensitive name match.
+
+### Browse a library
 
 ```bash
-emby-cli play --item "matrix (1999)" --pick-best-item
-emby-cli play --id 123456
-emby-cli play --id 111,222,333
-emby-cli play --id 123456 --player vlc --wait
+emby-cli library list --type movies --order-by items --desc
+emby-cli library search "pel" --count all
+emby-cli library show "Películas"
+emby-cli library play --id 614156
 ```
 
-Set `EMBY_PLAYER` if the player is not found automatically. A comma-separated list of IDs works for `play --id` and `download --item --id` (not for `show` / `search`).
+Library names use case-insensitive substring matching. Use `--id` when two
+libraries have similar names. `--type` accepts Emby collection types such as
+`movies`, `tvshows`, and `music`.
 
-### Download
-
-Download a single title, a whole library, or a list of titles from a file:
+### Build and manage a collection
 
 ```bash
-emby-cli download --item --id 123456
-emby-cli download --item --id 111,222,333
-emby-cli download --item "breaking bad S01E01" --pick-best-item
-emby-cli download --library "peliculas 4k"
-emby-cli download --from-file titles.txt
+# Discover and inspect collections
+emby-cli collection list --order-by items --desc
+emby-cli collection show "Star Wars"
+
+# Create one, add media, and edit its metadata
+emby-cli collection create "Star Wars" --item 456,789
+emby-cli collection add-item --id 1234 --item 101
+emby-cli collection set --id 1234 year=1980 display-order=PremiereDate
+
+# Use it like any other group of media
+emby-cli collection play --id 1234
+emby-cli collection download --id 1234 --dry-run
 ```
 
-A comma-separated list of IDs (`a,b,c`) is supported for `download --item --id` and `play --id`. `show` and `search` accept a single `--id` each.
+Other mutations are `rename`, `remove-item`, and `delete`. `--item` is
+repeatable and accepts comma-separated IDs. `collection set` supports `year`,
+`name`, `short-name`, `display-order` (`PremiereDate` or `SortName`), and
+`overview`.
 
-Useful options:
+Creation defaults to movie members. Use `collection create --type audio`,
+`--type episode`, or `--type video` for other media; adding and removing members
+does not need `--type`.
 
+Deletion asks for confirmation and verifies that the target is a `BoxSet`:
 
-| Option             | Meaning                                           |
-| ------------------ | ------------------------------------------------- |
-| `-n` / `--dry-run` | Resolve titles only — do not write files          |
-| `-o` / `--output`  | Output folder (default `./downloads`)             |
-| `-f` / `--force`   | Re-download even if a matching local file exists  |
-| `--pick-best-item` | When several versions match, pick the best ≤1080p |
-| `-m` / `--method`  | Download method                                            |
+```bash
+emby-cli collection delete "Star Wars"
+emby-cli collection delete --id 1234 --yes  # deliberate non-interactive use
+```
 
+This removes the virtual collection, not its media. Collection changes require
+an Emby account or API key allowed to edit metadata, usually an administrator.
 
-**Title lines** in `--item` / `--from-file` can look like:
+## Login and saved servers
 
-- `Movie (2010)`
-- `Show S01E05`
-- `Show S01` — whole season
-
-By default, matching is **strict**: a wrong year or several ambiguous results stops with a table of candidates. Add `--pick-best-item` to choose automatically (best quality up to 1080p).
-
-Library downloads match the library **name** (case-insensitive, unique match required).
-
-### Data cache
-
-Read-only commands (`search`, `show`, `play`, `info`) use a JSON disk cache under
-`~/.cache/emby-cli/data` (or under `EMBY_CACHE_DIR/data`).
-
-- Default TTL: **600 seconds** (`EMBY_DATA_CACHE_TTL` to override).
-- `--no-cache`: do not read cache; call API directly and refresh cache on disk.
-- Cache keys are isolated by **server URL + user ID** to prevent cross-server mixing.
-- `download` never uses this data cache.
-
----
-
-
-
-## Logging in and switching servers
-
-
-| Approach         | When to use                                                        |
-| ---------------- | ------------------------------------------------------------------ |
-| `emby-cli login` | Recommended — saves a session and remembers the server             |
-| API key          | `--api-key` / `EMBY_API_KEY` (keys are not stored by `login`)      |
-| Flags / env      | `--server`, `--username`, `--password` or `EMBY_*` for one-off use |
-
-
-Manage saved servers:
+`emby-cli login` is the simplest option: it saves a session and remembers the
+server. API keys and one-off credentials can instead be supplied through flags
+or environment variables.
 
 ```bash
 emby-cli config get-servers
 emby-cli config current-server
 emby-cli config use-server 'you@http://emby:8096'
-emby-cli config view          # tokens redacted
+emby-cli config view          # tokens are redacted
 emby-cli logout               # revoke and forget the current session
 ```
 
-Sessions live under `~/.cache/emby-cli/auth.json` (override with `EMBY_CACHE_DIR`). Set `EMBY_NO_AUTH_CACHE=1` to never read or write the cache.
+Sessions are stored in `~/.cache/emby-cli/auth.json`; change the base directory
+with `EMBY_CACHE_DIR`. Set `EMBY_NO_AUTH_CACHE=1` to disable session storage.
 
----
+## Downloads, cache, and configuration
 
+Choose a download method with `--method` or `EMBY_METHOD`:
 
+| Method | Result |
+| --- | --- |
+| `download` (default) | Normal file download from Emby |
+| `stream` | Direct stream URL, similar to Emby Web |
+| `hls` | HLS remux to `.mkv` |
 
-## Download methods
+Read-only commands use a JSON disk cache under `~/.cache/emby-cli/data` (or
+`EMBY_CACHE_DIR/data`). Its default TTL is 600 seconds. Pass `--no-cache` to
+bypass the cached value and refresh it from Emby. Cache entries are isolated by
+server URL and user ID; downloads and collection mutations always use fresh
+server state.
 
-Choose with `-m` / `EMBY_METHOD`:
+Flags override environment variables. The optional [`.env.example`](.env.example)
+is a template only—the CLI does not load `.env` files itself.
 
-
-| Method               | Best for                                |
-| -------------------- | --------------------------------------- |
-| `download` (default) | Normal file download from Emby          |
-| `stream`             | Direct stream URL (similar to Emby Web) |
-| `hls`                | HLS remux to `.mkv`                     |
-
-
----
-
-
-
-## Configuration reference
-
-Flags override environment variables. Optional template: `.env.example` (export the vars yourself — the CLI does not load `.env` files).
-
-
-| Variable                          | Description                                         |
-| --------------------------------- | --------------------------------------------------- |
-| `EMBY_SERVER`                     | Server URL                                          |
-| `EMBY_API_KEY`                    | API key                                             |
-| `EMBY_USERNAME` / `EMBY_PASSWORD` | Username / password                                 |
-| `EMBY_OUTPUT`                     | Download directory (default `./downloads`)          |
-| `EMBY_METHOD`                     | `download`, `stream`, or `hls`                      |
-| `EMBY_PLAYER`                     | External player command or path                     |
-| `EMBY_ITEM_ID`                    | Default `--id` for item download / play             |
-| `EMBY_CACHE_DIR`                  | Credentials directory (default `~/.cache/emby-cli`) |
-| `EMBY_NO_AUTH_CACHE`              | `1` = disable session cache                         |
-| `EMBY_DATA_CACHE_TTL`             | Data-cache TTL in seconds (default `600`)           |
-
-
----
-
-
-
-## Tips
-
-- Prefer **search → show → download** when you are unsure of the exact title.
-- Prefer **IDs** (`--id`) when you already have them — no ambiguity.
-- Use `--dry-run` before a large library or file-list download.
-- Content totals in `info` can count multiple versions of the same title separately.
-
----
-
-
+| Variable | Purpose |
+| --- | --- |
+| `EMBY_SERVER` | Server URL |
+| `EMBY_API_KEY` | API key |
+| `EMBY_USERNAME`, `EMBY_PASSWORD` | Login credentials |
+| `EMBY_OUTPUT` | Download directory |
+| `EMBY_METHOD` | `download`, `stream`, or `hls` |
+| `EMBY_PATH_STRIP` | Server prefix removed by `--mirror-path` |
+| `EMBY_PLAYER` | External player command or path |
+| `EMBY_CACHE_DIR` | Base directory for credentials and data cache |
+| `EMBY_NO_AUTH_CACHE` | Set to `1` to disable the session cache |
+| `EMBY_DATA_CACHE_TTL` | Data-cache TTL in seconds |
 
 ## For contributors
 
@@ -232,22 +221,23 @@ ruff check .
 python -m build && twine check dist/*
 ```
 
-Architecture, CLI contracts, testing rules, and release process: see **[AGENTS.md](AGENTS.md)** (for humans and AI agents). Releases: tag `vX.Y.Z` and push — CI publishes to PyPI only (no GitHub Releases).
-
----
-
-
+Architecture, CLI contracts, testing rules, and the release process are in
+**[AGENTS.md](AGENTS.md)**. Releases are published to PyPI by pushing a
+`vX.Y.Z` tag; this project does not create GitHub Releases.
 
 ## Responsible use
 
-This tool talks to Emby over its normal HTTP API. Whether download or playback is allowed depends on **how that server is configured** and on **the terms set by whoever runs it**.
+This tool talks to Emby over its normal HTTP API. Whether download or playback
+is allowed depends on **how that server is configured** and on **the terms set
+by whoever runs it**.
 
-Use `emby-cli` only on servers you are authorized to access, and only in ways that comply with that server’s terms of use, policies, and applicable law. The authors provide the software as-is and are **not responsible** for misuse, for downloads from servers that disallow them, or for any consequences of using the tool.
-
----
-
-
+Use `emby-cli` only on servers you are authorized to access, and only in ways
+that comply with that server’s terms of use, policies, and applicable law. The
+authors provide the software as-is and are **not responsible** for misuse, for
+downloads from servers that disallow them, or for any consequences of using the
+tool.
 
 ## License
 
-[CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/) — free for non-commercial use.
+[CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/) — free for
+non-commercial use.

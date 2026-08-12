@@ -112,6 +112,7 @@ def print_item_choices(
     selected: dict | None = None,
     excluded: set[str] | None = None,
     sort_rows: bool = True,
+    leading_blank: bool = False,
 ) -> None:
     """Print a compact, uniform table of items (movies, series, episodes)."""
     if not items:
@@ -121,12 +122,16 @@ def print_item_choices(
     excluded = excluded or set()
     id_w = max(len("ID"), max(len(str(it.get("Id", ""))) for it in items))
     name_w = 44
+    show_series = any(it.get("Type") == "Episode" for it in items)
+    series_w = 28 if show_series else 0
 
-    header = (
-        f"{'ID':<{id_w}}  {'Name':<{name_w}}  {'Year':<4}  {'Type':<8}  "
-        f"{'Res':>5}  {'Size':>9}"
-    )
-    print()
+    header_parts = [f"{'ID':<{id_w}}", f"{'Name':<{name_w}}"]
+    if show_series:
+        header_parts.append(f"{'Series':<{series_w}}")
+    header_parts.extend([f"{'Year':<4}", f"{'Type':<8}", f"{'Res':>5}", f"{'Size':>9}"])
+    header = "  ".join(header_parts)
+    if leading_blank:
+        print()
     print(header)
     print("-" * len(header))
 
@@ -144,10 +149,14 @@ def print_item_choices(
         itype = str(it.get("Type") or "?")
         res = classify_resolution(item_video_width(it))
         size = format_size(item_remote_size(it))
-        print(
-            f"{iid:<{id_w}}  {label:<{name_w}}  {year:<4}  {itype:<8}  "
-            f"{res:>5}  {size:>9}"
-        )
+        row_parts = [f"{iid:<{id_w}}", f"{label:<{name_w}}"]
+        if show_series:
+            series = str(it.get("SeriesName") or "?")
+            if len(series) > series_w:
+                series = series[: series_w - 1] + "…"
+            row_parts.append(f"{series:<{series_w}}")
+        row_parts.extend([f"{year:<4}", f"{itype:<8}", f"{res:>5}", f"{size:>9}"])
+        print("  ".join(row_parts))
 
 
 def print_available_libraries(libraries: list[dict]) -> None:
@@ -156,7 +165,12 @@ def print_available_libraries(libraries: list[dict]) -> None:
         print(f"  - [{lib.get('Id', '?')}] {lib.get('Name', '?')}")
 
 
-def print_library_choices(libraries: list[dict], *, sort_rows: bool = True) -> None:
+def print_library_choices(
+    libraries: list[dict],
+    *,
+    sort_rows: bool = True,
+    leading_blank: bool = False,
+) -> None:
     """Print libraries: ID, Name, Type, Items (no Year/Res/Size)."""
     if not libraries:
         return
@@ -170,7 +184,8 @@ def print_library_choices(libraries: list[dict], *, sort_rows: bool = True) -> N
     header = (
         f"{'ID':<{id_w}}  {'Name':<{name_w}}  {'Type':<{type_w}}  {'Items':>{items_w}}"
     )
-    print()
+    if leading_blank:
+        print()
     print(header)
     print("-" * len(header))
 
@@ -196,7 +211,7 @@ def _ambiguous(
         "or pass --pick-best-item to auto-select."
     ),
 ) -> None:
-    print_item_choices(items, excluded=excluded)
+    print_item_choices(items, excluded=excluded, leading_blank=True)
     print(f"\n{hint}")
 
 
@@ -221,7 +236,7 @@ def _pick_episode_versions(episodes: list[dict], *, pick_best: bool) -> list[dic
         if best is None:
             _ambiguous(versions)
             return None
-        print_item_choices(versions, selected=best)
+        print_item_choices(versions, selected=best, leading_blank=True)
         chosen.append(best)
     return chosen
 
@@ -236,7 +251,7 @@ def resolve_title_items(
     """Resolve a title line to one or more items (strict).
 
     Returns a list of items to act on, or None on not-found / ambiguity.
-    When *allow_season_all* is True (download --media-item/--from-file) and the line is ``Sxx`` without
+    When *allow_season_all* is True (``item download`` / ``--from-file``) and the line is ``Sxx`` without
     ``Exx``, returns all episodes in that season (with optional pick_best per
     episode version). When False (play), season-only lines refuse.
     """
@@ -285,7 +300,7 @@ def resolve_title_items(
             if not allow_season_all:
                 print(f"  Season {season:02d} has {len(episodes)} episode(s); "
                       "specify SxxExx or --id:")
-                print_item_choices(episodes)
+                print_item_choices(episodes, leading_blank=True)
                 return None
             picked = _pick_episode_versions(episodes, pick_best=pick_best)
             return picked
@@ -302,7 +317,7 @@ def resolve_title_items(
         if best is None:
             _ambiguous(episodes)
             return None
-        print_item_choices(episodes, selected=best)
+        print_item_choices(episodes, selected=best, leading_blank=True)
         return [best]
 
     # Movie path
@@ -328,7 +343,7 @@ def resolve_title_items(
 
     if len(candidates) == 1:
         best = candidates[0]
-        print_item_choices(results, selected=best, excluded=excluded)
+        print_item_choices(results, selected=best, excluded=excluded, leading_blank=True)
         return [best]
 
     if not pick_best:
@@ -341,7 +356,7 @@ def resolve_title_items(
         _ambiguous(candidates)
         return None
 
-    print_item_choices(results, selected=best, excluded=excluded)
+    print_item_choices(results, selected=best, excluded=excluded, leading_blank=True)
     return [best]
 
 

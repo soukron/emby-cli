@@ -9,7 +9,7 @@ End-user documentation lives in [`README.md`](README.md). This file is for **mai
 
 ## What this project is
 
-CLI to **search**, **inspect** (`show`), **play**, and **download/backup** original media files from an **Emby** server over its REST API (typically HTTP port `8096`). No SSH, no shared mounts, no rsync.
+CLI to **search**, **inspect** (`show`), **play**, **download/backup** original media files, and **manage collections** on an **Emby** server over its REST API (typically HTTP port `8096`). No SSH, no shared mounts, no rsync.
 
 | | |
 |--|--|
@@ -34,12 +34,19 @@ CLI to **search**, **inspect** (`show`), **play**, and **download/backup** origi
 ├── src/emby_cli/           # application package
 │   ├── cli.py              # argparse + main() + pre-auth validation
 │   ├── client.py           # EmbyClient: HTTP, auth, browse, download/HLS
+│   ├── api/                # Entity services sharing the EmbyClient transport
+│   │   ├── items.py        # Generic item list/get/update/delete
+│   │   ├── collections.py  # BoxSet CRUD and membership endpoints
+│   │   └── libraries.py    # Library view catalog (/Users/{uid}/Views)
 │   ├── auth_cache.py       # auth.json contexts (kubeconfig-style)
 │   ├── data_cache.py       # JSON cache for read-only metadata calls
 │   ├── credentials.py      # resolve server / user / password
-│   ├── mode_args.py        # --item / --library / QUERY helpers
+│   ├── detail_output.py     # shared item/library detail renderers
 │   ├── resolve.py          # title lines, pick_best, choice tables
-│   ├── download_ops.py     # download loop, skip, library matching
+│   ├── collection_ops.py   # collection/member resolution + CSV validation
+│   ├── download_ops.py     # library name/id matching helpers
+│   ├── library_ops.py      # library view resolution, type filters, and download
+│   ├── item_ops.py         # media item resolution, listing, playback, and download
 │   ├── output.py           # stdout/stderr messages + Stats / exit codes
 │   ├── util.py             # paths, sizes, skip, ffmpeg remux
 │   ├── constants.py        # retries, types, field lists, CLIENT_NAME
@@ -89,8 +96,8 @@ The CLI reads **`os.environ` only** (it does not auto-load `.env`; export vars o
 | `EMBY_API_KEY` | API key (alternative to username/password) |
 | `EMBY_USERNAME` / `EMBY_PASSWORD` | Name-based auth |
 | `EMBY_OUTPUT` | Download destination (default `./downloads`) |
-| `EMBY_ITEM_ID` | Default `--id` for `download --item` / `play` |
 | `EMBY_METHOD` | `download` \| `stream` \| `hls` |
+| `EMBY_PATH_STRIP` | With `--mirror-path`, strip this server path prefix before mirroring (e.g. `/mnt/media`) |
 | `EMBY_PLAYER` | External player command for `play` |
 | `EMBY_CACHE_DIR` | Credential store dir (default `~/.cache/emby-cli`; file `auth.json`) |
 | `EMBY_NO_AUTH_CACHE` | `1` = do not read/write session cache |
@@ -108,22 +115,130 @@ cli.main
   ├─ open EmbyClient + ensure session
   └─ commands.<cmd>
         ├─ validate_*_args    # intentional duplicate (defense in depth)
-        └─ EmbyClient / resolve / download_ops / output
+        └─ EmbyClient / api services / resolve / *_ops / output
 ```
 
 | Concern | Primary modules |
 |---------|-----------------|
-| HTTP, retries, auth, browse, binary/HLS download | `client.py` |
+| HTTP transport, retries, auth, browse, binary/HLS download | `client.py` |
+| Generic item API + entity services | `api/items.py`, `api/collections.py`, `api/libraries.py` |
 | Session store on disk | `auth_cache.py` |
 | Metadata cache on disk | `data_cache.py` |
 | Resolving server/user/password from flags/env/TTY/cache | `credentials.py` |
-| `--item` / `--library` / embedded QUERY | `mode_args.py` + command modules |
+| Item/library selectors and validation | `commands/item.py`, `commands/library.py`, `item_ops.py`, `library_ops.py` |
 | Title-line resolution (`Movie (2010)`, `Show S01E02`) | `resolve.py` |
-| Download orchestration, skip, library match | `download_ops.py` |
+| Download orchestration, skip, library match | `item_ops.py` (items), `library_ops.py` (libraries), `collection_ops.py` (collections) |
+| Playback orchestration | `item_ops.py` (`play_items`, …), `library_ops.play_library`, `collection_ops.play_collection` |
+| Library name/id matching and choice rows | `download_ops.py` |
+| Collection/member resolution and CSV policy | `collection_ops.py` |
+| Library view resolution and type filters | `library_ops.py` |
+| Media item resolution, listing, and playback | `item_ops.py` |
 | User-visible messages and exit codes | `output.py` |
 | New flag or subcommand | `cli.py` + `commands/…` + `help.COMMAND_SUMMARIES` |
 
-`client.py` is large on purpose today (HTTP + Emby ops + download). Prefer small, tested helpers over a big rewrite unless a dedicated refactor is planned. See historical notes in maintainer discussions; do not split every endpoint into its own file without need.
+`EmbyClient` owns one `requests.Session`, URL normalization, auth/reauth, retries,
+and cache switches. Entity services are composed as `client.items`,
+`client.collections`, and `client.libraries`; they must reuse that transport rather than create sessions
+or duplicate auth. Add a service when there is a real entity boundary—do not
+introduce a speculative `BaseService` hierarchy or split every endpoint into its
+own file. Existing browse/download methods remain on `client.py` until a scoped
+migration justifies moving them.
+
+Collection metadata updates use the safe pattern: uncached full item GET → merge
+only requested fields → `POST /Items/{id}` with the complete resulting object.
+`POST /Collections` uses query parameters and `retries=1`; retrying creation can
+produce duplicates when the server processed a request but lost its response.
+
+### Entity services — canonical path (collections, genres, people, tags, …)
+
+Use this pattern for **all new entity work**. Do not add parallel browse/update
+paths on `EmbyClient` or duplicate pagination/caching logic in command modules.
+
+**Transport (one place only):** `EmbyClient` owns the session, URL normalization,
+auth/reauth, retries, and `_get` / `_post` / `_delete` / `_paginate`. Entity code
+calls these primitives (usually indirectly via a service), never `requests` directly.
+
+**Reads and generic item mutation (one place only):** `client.items` (`api/items.py`).
+
+| Need | Use | Do not use in new code |
+|------|-----|------------------------|
+| Paginated full list | `client.items.list_all(...)` | `get_items()`, `get_all_items()`, hand-rolled paging loops |
+| One item by ID | `client.items.get(item_id, fields=…)` | `get_item_info()` |
+| Update metadata | `client.items.update(item_id, full_item_dict)` | ad-hoc `_post` from commands |
+| Delete one item | `client.items.delete(item_id)` | ad-hoc `_delete` from commands |
+
+New code must use **v2 cache keys** inside `ItemsService` (`v2:item:…`, `v2:items:…`).
+`get_item_info` / `get_items` remain for some canonical item/library operations
+until a scoped migration moves them to thin wrappers over `client.items`.
+When migrating, preserve defaults (e.g. `Fields=ITEM_FIELDS`) and stdout behavior.
+
+**Entity-specific endpoints (add a service when the REST surface is distinct):**
+
+| Entity | Service module | REST boundary | Notes |
+|--------|----------------|---------------|-------|
+| BoxSet collections | `api/collections.py` | `/Collections*` | Membership + catalog cache `v2:collections:…`; delegates delete/type check to `items` |
+| Library views | `api/libraries.py` | `/Users/{uid}/Views` | Read-only catalog cache `v2:libraries:…`; no create/rename/delete |
+| Generic item metadata | `api/items.py` | `/Users/{uid}/Items`, `/Items/{id}` | Shared by all metadata edits; `search()` for catalog discovery |
+| People / actors (future) | `api/people.py` (planned) | `/Persons`, person search | Lookup/create persons before linking on an item |
+| Genres, studios, tags (future) | **no separate HTTP client** | fields on item JSON | Arrays on the item (`Genres`, `Studios`, `Tags`, `People` / artist lists) — mutate via `items` only |
+
+Add `api/<entity>.py` only when Emby exposes a **dedicated route family** (like
+`/Collections` or `/Persons`). Simple array fields on an item belong in a shared
+metadata helper, not a new service per field name.
+
+**Metadata updates (genres, studios, tags, actors, collection `set`, …):**
+
+1. Implement once (e.g. `api/metadata.py` or `ItemsService.merge_and_update`):
+   uncached `items.get(id, fields=…)` → change **only** requested keys in the dict →
+   `items.update(id, merged_dict)`. Never POST partial objects.
+2. Commands stay thin: parse flags → resolve target item/collection → call helper.
+3. Mutations: `use_cache=False` on reads that drive writes; invalidate affected
+   `items` keys (and entity catalog keys if any) via `delete_json` / service
+   `invalidate*` methods — same as collections today.
+
+**CLI layering (repeat per feature area):**
+
+```text
+cli.py  →  validate_*_args (pre-auth)  →  commands/<topic>.py
+                                              ↓
+                                         <topic>_ops.py   # resolution, CSV, policy constants
+                                              ↓
+                                         client.items / client.collections / client.libraries / client.<entity>
+```
+
+- Put **policy constants** in `*_ops.py` (e.g. `COLLECTION_MEMBER_TYPES`), not in
+  transport or services.
+- Put **HTTP and cache keys** in `api/*.py`, not in commands.
+- Register subcommands in `cli.py` + `help.COMMAND_SUMMARIES`; document user-facing
+  behavior in `README.md`.
+- For catalog listing commands, prefer a dedicated **`list`** subcommand as an
+  alias of **`search --count all`** (no QUERY, no default `--count` cap). Keep
+  **`search [QUERY]`** for substring filters and truncated previews. Reuse the
+  same listing handler in `commands/<topic>.py` for both entry points.
+
+**Caching rules (all entities):**
+
+- Read-only CLI paths may cache; mutation paths resolve **uncached**.
+- Mutations never write cache entries; invalidate exact keys (hashed filenames — no
+  prefix deletion). Keys always include **normalized server URL + user ID**.
+- `--no-cache`: skip `_cache_read`; still fetch and refresh disk where applicable.
+
+**Tests:** mock at the service or transport boundary (`client.items`, `client._post`),
+not inside command print logic. Add `tests/test_client_<entity>.py` for HTTP
+contracts and `tests/test_<topic>_ops.py` for resolution/policy.
+
+**Anti-patterns (do not introduce):**
+
+- New `requests.Session` or duplicate auth/retry stacks.
+- A speculative `BaseService` hierarchy before a second real consumer exists.
+- Reimplementing `_paginate` or v1 cache keys in new modules.
+- Metadata POSTs built by hand in `commands/` without a full GET merge.
+- Splitting every JSON field (`Genres`, `Tags`, …) into its own `api/*.py` file.
+
+**Planned metadata work (genres / studios / tags / actors):** extend with a
+`metadata` command or `collection set` flags using the shared GET→merge→POST helper
+on `client.items`; add `api/people.py` only if person lookup/creation needs
+`/Persons` beyond item embedded lists. Reuse collection invalidation patterns.
 
 ---
 
@@ -136,7 +251,7 @@ cli.main
 - `config` — `current-server`, `get-servers`, `use-server`, `view` (tokens redacted).
 - Other commands: no `--server` → active context; cache hit → reuse token; miss + credentials → transparent login; **HTTP 401** with password available → invalidate cache and re-authenticate **once per top-level request** (no infinite reauth loop).
 - If 401 cannot be recovered (no password, or re-login rejected): raise `AuthenticationError`, clear the stale cache entry, and let `main` print a short stderr message (no traceback).
-- Invalid selectors for `search` / `download` / `play` / `show` are rejected **before** opening a client.
+- Invalid selectors for `item` / `library` / `collection` are rejected **before** opening a client.
 
 ### Intentional duplicate validation
 
@@ -148,20 +263,101 @@ cli.main
 
 Observable behavior for users and scripts: flags, stdout/stderr split, exit codes, and message prefixes. Prefer CHANGELOG entries when any of these change.
 
-### Modes `--item` / `--library`
+### Collections
 
-Shared pattern (`mode_args.py`) for **`search`** and **`download`**:
+- `collection list` lists every `BoxSet` (alias of `collection search --count all`).
+  Supports `--order-by`, `--desc`, and `--no-cache` like search.
+- `collection search [QUERY]` filters by name substring; `--count` defaults to 30,
+  use `--count all` for the full catalog (same output as `list` without QUERY).
+- `collection show/delete/rename/download/add-item/remove-item/set` select a collection with
+  one positional QUERY or `--id` (exact/unique prefix), never both. There is no
+  redundant `--collection` flag.
+- Name resolution is case-insensitive substring matching; ambiguity prints a
+  candidate table and exits 1.
+- `add-item` / `remove-item` accept repeated, CSV-aware `--item` values and allow
+  any supported member type (`Movie`, `Audio`, `Episode`, `Video`) without an
+  extra flag. `create --type` selects the expected type for initial members
+  (aliases in `COLLECTION_MEMBER_TYPE_ALIASES`; default `movie`).
+- `create` with `--item` aborts before `POST /Collections` when every reference
+  fails validation (avoids empty-member server errors).
+- Member failures are independent: report each `error:` on stderr, submit valid
+  IDs once, print `Done. ok=… error=…`, and exit 1 if any failed.
+- `rename` changes only `Name`; `--short-name` additionally changes `SortName`.
+- `set` accepts one or more `KEY=VALUE` assignments (`year`, `name`,
+  `short-name`, `display-order`, `overview`). Parent `--id` may appear before
+  the subcommand (`collection --id X set year=1980`). Uses uncached GET → merge
+  only requested fields → full `POST /Items/{id}` via `items.merge_and_update`.
+- `delete` re-fetches and verifies `Type=BoxSet`, prompts on a TTY, and requires
+  `--yes` without interactive stdin. Never weaken this guard or call delete on a
+  selector that did not resolve uniquely.
+- `collection download` resolves one collection by QUERY or `--id`, lists its
+  downloadable members, and downloads each via `item_ops.download_items`. Supports
+  `--output`, `--method`, `--force`, `--throttle`, `--dry-run`, and optional
+  `--mirror-path` (recreate source subdirectories under the output folder).
+  Optional `EMBY_PATH_STRIP` / `--path-strip` removes a server mount prefix first;
+  if the prefix does not match, the last 2-3 path components heuristic is used.
+- `collection play` resolves one collection by QUERY or `--id`, lists playable
+  members (`Movie`, `Episode`, `Audio`, `Video`), and opens each DirectStream URL
+  via `item_ops.play_items`. Always waits for each player process to exit before
+  starting the next item. Supports `--player`, `--order-by`
+  (`year`, `name`, `id`, `release-date`, `added-date`, `resolution`, `size`), `--desc`, and
+  parent/subcommand `--id`.
 
-| Flag | Behavior |
-|------|----------|
-| `--item [QUERY]` | Media mode; QUERY optional on the same flag. Alias: `--media-item` |
-| `--library [QUERY]` | Library mode; QUERY optional on the same flag |
-| `--id` | Emby ID (alternative to QUERY; CSV allowed where documented) |
-| `--search` | Alternative QUERY (do not combine with QUERY embedded in `--item`/`--library`) |
+### Libraries
 
-`nargs='?'` + `const=""` so `--item --count all` / `--library --id X` do not swallow the next flag as QUERY.
+Read-only entity commands (`library list`, `library search`, `library show`) plus
+`library download` and `library play`.
 
-`show` is different: `--item`/`--library` plus **mandatory `--id`** (no QUERY / `--search`).
+- `library list` lists every library view (alias of `library search --count all`).
+  Supports `--type`, `--order-by` (`name`, `id`, `items`), `--desc`, and `--no-cache`.
+- `library search [QUERY]` filters by name substring; `--count` defaults to 30,
+  use `--count all` for the full catalog (same output as `list` without QUERY).
+- `library show` selects a library with one positional QUERY or `--id` (exact/unique
+  prefix), never both. Parent `--id` may appear before the subcommand. Reuses
+  `detail_output.print_library` for detail output.
+- `--type` accepts aliases such as `movies`, `tv`/`tvshows`, `music`, `photos`, etc.
+- `library download` resolves one library by QUERY or `--id`, lists its downloadable
+  items, and downloads each via `item_ops.download_items`. Supports `--output`,
+  `--method`, `--force`, `--throttle`, `--dry-run`, and optional `--mirror-path`.
+  Files land in `output/<library name>/` (flat by default; subdirectories when
+  `--mirror-path` is set). Optional `EMBY_PATH_STRIP` / `--path-strip` removes a
+  server mount prefix before mirroring.
+- `library play` resolves one library by QUERY or `--id`, lists playable items, and
+  opens each DirectStream URL via `item_ops.play_items`. Always waits for each
+  player process to exit before starting the next item. Supports `--player`,
+  `--order-by` (`year`, `name`, `id`, `release-date`, `added-date`, `resolution`, `size`), and
+  `--desc`.
+- No `create`, `rename`, `delete`, `set`, `add-item`, or `remove-item` for libraries.
+
+### Media items
+
+Read-only entity commands (`item list`, `item search`, `item show`, `item play`) plus
+`item download` for playable media (`Movie`, `Episode`, `Audio`, `Video`).
+
+- `item list` lists every matching item (alias of `item search --count all`).
+  Uses `item_ops.build_item_listing_query()` + `fetch_item_listing()` →
+  `ItemsService.list_items()` (optional `SearchTerm`; optional `ParentId` for scoped lists).
+- `item search [QUERY]` supports `--type`, `--year`, `--order-by`
+  (`year`, `name`, `id`, `release-date`, `added-date`, `resolution`, `size`), `--desc`,
+  `--no-cache`, and `--parse-query` (title-line syntax: `Movie (1999)`, `Show S01E01`).
+  Default QUERY mode uses an Emby recall search followed by strict display-name
+  filtering. Filters and supported sorts are delegated where possible; strict
+  filtering and its final limit are applied locally. Episode tables include a
+  `Series` column when applicable.
+- `item show` resolves one item by QUERY or `--id` (exact/unique prefix). Parent
+  `--id` may appear before the subcommand. Supports `--parse-query` like search.
+  Reuses `detail_output.print_media_item`.
+- `item play` resolves one item by QUERY or `--id` and opens a DirectStream URL via
+  `item_ops` playback helpers (`find_player`, `play_one_item`, `play_item_ids`).
+  Supports `--player`, `--wait`, `--pick-best-item`, `--no-cache`, `--no-parse-query`,
+  and comma-separated `--id`. Parent `--id` may appear before the subcommand.
+  QUERY defaults to title-line resolution (`resolve_title_items`).
+- `item download` resolves one item by QUERY or `--id` (CSV supported) and downloads
+  via `item_ops` (`download_items`, `download_item_ids`, `download_from_file`).
+  Supports `--output`, `--method`, `--force`, `--throttle`, `--pick-best-item`,
+  `--dry-run`, `--from-file`, `--no-parse-query`, and optional `--mirror-path`.
+  QUERY / `--from-file` default to title-line resolution (`resolve_title_items`).
+- No `create`, `rename`, or `delete` for items in this phase.
 
 ### Output streams
 
@@ -176,7 +372,7 @@ Shared pattern (`mode_args.py`) for **`search`** and **`download`**:
 
 Any user-facing list/table of items or libraries: sort by **Id descending**, then **Name** alphabetically (case-insensitive). Use `resolve.sort_for_display`.
 
-### Title resolution (`play` / `download --item` / `--from-file`)
+### Title resolution (`item play` / `item download` / `--from-file`)
 
 Strict by default: year with no match, multiple series, or multiple versions → fail with a table + hint.
 
@@ -194,8 +390,10 @@ Identity headers / User-Agent: `emby-cli/<version>` (`constants.CLIENT_NAME`). `
 
 ### Data cache isolation
 
-- Read-only commands (`search`, `show`, `play`, `info`) can use disk cache for metadata.
+- Read-only commands (`search`, `show`, `play`, `info`, collection list/search/show,
+  library list/search/show, item list/search/show/play) can use disk cache for metadata.
 - `download` must bypass data cache.
+- Collection mutations resolve uncached and invalidate catalog/detail/member keys immediately.
 - Cache keys must include **server URL + resolved user ID** (and endpoint params) so
   data from one server is never served for another.
 - `--no-cache` means “do not read cache”, but still fetch from API and refresh disk.
@@ -204,6 +402,8 @@ Identity headers / User-Agent: `emby-cli/<version>` (`constants.CLIENT_NAME`). `
 
 - `download`: non-zero if `error > 0`; with `--from-file` also if `not_found > 0`.
 - `--dry-run` still runs the path; planned items count as `ok` in the Done summary.
+- Collection add/remove/create may apply valid members despite invalid peers; any
+  reported member error makes the final exit code non-zero.
 
 ---
 
@@ -295,11 +495,14 @@ Maintainers with a local wrapper Makefile may use an equivalent `make release VE
 | Task | Start here |
 |------|------------|
 | Auth, retry, browse, download/HLS | `client.py` |
-| Item/library QUERY modes | `mode_args.py`, `cli.py`, `commands/{search,show,download,play}.py` |
+| Generic item/collection endpoints | `api/items.py`, `api/collections.py` |
+| New entity service or metadata merge helper | `api/items.py` first; `api/<entity>.py` only for distinct REST routes; see **Entity services** above |
+| Collection matching/member policy | `collection_ops.py`, `commands/collection.py` |
+| Item/library selectors | `cli.py`, `commands/item.py`, `commands/library.py`, `item_ops.py`, `library_ops.py` |
 | New subcommand or flag | `cli.py`, `commands/…`, `help.COMMAND_SUMMARIES` |
-| `show` detail / library recents | `commands/show.py`, `constants.SHOW_*` |
+| Item/library detail and recents | `detail_output.py`, `constants.SHOW_*` |
 | Title disambiguation / pick-best | `resolve.py` |
-| Skip / dry-run / library download loop | `download_ops.py` |
+| Skip / dry-run / bulk download loops | `item_ops.py`, `library_ops.download_library`, `collection_ops.download_collection` |
 | Message text / exit codes | `output.py` |
 | Emby response typing | `types.py` (TypedDict; apply gradually) |
 | User docs | `README.md` |

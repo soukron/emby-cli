@@ -17,6 +17,9 @@ import m3u8
 import requests
 from tqdm import tqdm
 
+from emby_cli.api.collections import CollectionsService
+from emby_cli.api.items import ItemsService
+from emby_cli.api.libraries import LibrariesService
 from emby_cli.auth_cache import (
     AuthCacheEntry,
     clear_auth_cache,
@@ -130,6 +133,9 @@ class EmbyClient:
         self._username: str | None = None
         self._password: str | None = None
         self.session = requests.Session()
+        self.items = ItemsService(self)
+        self.collections = CollectionsService(self)
+        self.libraries = LibrariesService(self)
         ver = _client_version()
         self.session.headers.update({
             "User-Agent": f"{CLIENT_NAME}/{ver}",
@@ -252,10 +258,34 @@ class EmbyClient:
         path: str,
         payload: dict | None = None,
         *,
+        params: dict | None = None,
         retries: int | None = None,
         **kwargs,
     ) -> requests.Response:
-        return self._request_with_retry("POST", path, json=payload, retries=retries, **kwargs)
+        return self._request_with_retry(
+            "POST",
+            path,
+            params=params,
+            json=payload,
+            retries=retries,
+            **kwargs,
+        )
+
+    def _delete(
+        self,
+        path: str,
+        params: dict | None = None,
+        *,
+        retries: int | None = None,
+        **kwargs,
+    ) -> requests.Response:
+        return self._request_with_retry(
+            "DELETE",
+            path,
+            params=params,
+            retries=retries,
+            **kwargs,
+        )
 
     @staticmethod
     def _ensure_api_key(url: str, token: str | None) -> str:
@@ -665,7 +695,7 @@ class EmbyClient:
 
         *limit* caps how many items to return. ``None`` fetches all pages
         (Emby ``TotalRecordCount``). Internal callers (resolve) keep the
-        default of 25; the CLI ``search --count`` overrides this.
+        default of 25; the CLI ``item search --count`` overrides this.
         """
         items, _total = self.search_items_result(
             query, item_types=item_types, limit=limit,

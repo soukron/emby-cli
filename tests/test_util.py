@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from emby_cli.util import build_dest_path, format_size, should_skip, should_skip_hls
+from emby_cli.util import (
+    build_dest_path,
+    format_size,
+    mirrored_path_parts,
+    safe_output_dir_name,
+    should_skip,
+    should_skip_hls,
+)
 
 
 def test_format_size():
@@ -16,7 +23,46 @@ def test_format_size():
 def test_build_dest_path_from_server_path():
     item = {"Id": "1", "Name": "Film", "Path": "/mnt/media/Movies/Film/Film.mkv"}
     dest = build_dest_path(item, Path("/out"))
+    assert dest == Path("/out/Film.mkv")
+
+
+def test_build_dest_path_mirror_path():
+    item = {"Id": "1", "Name": "Film", "Path": "/mnt/media/Movies/Film/Film.mkv"}
+    dest = build_dest_path(item, Path("/out"), mirror_path=True)
     assert dest == Path("/out/Movies/Film/Film.mkv")
+
+
+def test_mirrored_path_parts_strips_configured_prefix():
+    parts = mirrored_path_parts(
+        "/mnt/media/tv/Show/Season 01/ep.mkv",
+        path_strip="/mnt/media",
+    )
+    assert parts == ("tv", "Show", "Season 01", "ep.mkv")
+
+
+def test_mirrored_path_parts_falls_back_when_prefix_does_not_match():
+    parts = mirrored_path_parts(
+        "/srv/storage/Movies/Film/Film.mkv",
+        path_strip="/mnt/media",
+    )
+    assert parts == ("Movies", "Film", "Film.mkv")
+
+
+def test_build_dest_path_mirror_path_with_path_strip():
+    item = {"Id": "1", "Name": "Film", "Path": "/mnt/media/Movies/Film/Film.mkv"}
+    dest = build_dest_path(
+        item,
+        Path("/out"),
+        mirror_path=True,
+        path_strip="/mnt/media",
+    )
+    assert dest == Path("/out/Movies/Film/Film.mkv")
+
+
+def test_safe_output_dir_name():
+    assert safe_output_dir_name("  Películas  ") == "Películas"
+    assert safe_output_dir_name("Star/Wars") == "Star-Wars"
+    assert safe_output_dir_name("   ") == "?"
 
 
 def test_build_dest_path_fallback():

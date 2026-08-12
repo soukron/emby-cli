@@ -1,12 +1,8 @@
-"""show command — detail view for a media item or library by --id."""
+"""Detail renderers shared by canonical item and library commands."""
 
 from __future__ import annotations
 
-import argparse
-import sys
 import textwrap
-
-import requests
 
 from emby_cli.client import EmbyClient
 from emby_cli.constants import (
@@ -14,13 +10,10 @@ from emby_cli.constants import (
     SHOW_LIBRARY_ITEM_TYPES,
     SHOW_RECENT_COUNT,
 )
-from emby_cli.download_ops import find_library
-from emby_cli.mode_args import mode_is_item, mode_is_library
 from emby_cli.resolve import (
     classify_resolution,
     item_label,
     item_video_width,
-    print_available_libraries,
     sort_for_display,
 )
 from emby_cli.util import (
@@ -31,20 +24,9 @@ from emby_cli.util import (
 )
 
 
-def validate_show_args(args: argparse.Namespace) -> str | None:
-    """Return an error message if mode/selectors are invalid; else ``None``."""
-    if not mode_is_item(args) and not mode_is_library(args):
-        return "Specify --item or --library"
-    item_id = (getattr(args, "id", None) or "").strip()
-    if not item_id:
-        return "Provide --id"
-    return None
-
-
 def _format_emby_date(value: str | None) -> str:
     if not value:
         return "?"
-    # Emby: "2024-01-15T12:34:56.0000000Z"
     return value.replace("T", " ")[:19]
 
 
@@ -66,7 +48,6 @@ def _print_overview(overview: str | None) -> None:
 
 
 def _media_field_value(value: object | None) -> str | None:
-    """Return a printable media value, or ``None`` if missing / unknown."""
     if value is None:
         return None
     text = str(value).strip()
@@ -75,7 +56,8 @@ def _media_field_value(value: object | None) -> str | None:
     return text
 
 
-def _print_media_item(item: dict) -> None:
+def print_media_item(item: dict) -> None:
+    """Print the canonical media-item detail view."""
     print("Item")
     _print_kv("id", item.get("Id"))
     _print_kv("name", item_label(item))
@@ -136,31 +118,32 @@ def _print_recent_items(items: list[dict]) -> None:
     )
     print(header)
     print("-" * len(header))
-    for it in items:
-        iid = str(it.get("Id", ""))
-        label = item_label(it)
+    for item in items:
+        item_id = str(item.get("Id", ""))
+        label = item_label(item)
         if len(label) > name_w:
             label = label[: name_w - 1] + "…"
-        year = str(it.get("ProductionYear") or "?")
-        itype = str(it.get("Type") or "?")
-        added = _format_emby_date(it.get("DateCreated"))
+        year = str(item.get("ProductionYear") or "?")
+        item_type = str(item.get("Type") or "?")
+        added = _format_emby_date(item.get("DateCreated"))
         print(
-            f"{iid:<{id_w}}  {label:<{name_w}}  {itype:<8}  "
+            f"{item_id:<{id_w}}  {label:<{name_w}}  {item_type:<8}  "
             f"{year:<4}  {added:<19}"
         )
 
 
-def _print_library(client: EmbyClient, lib: dict) -> None:
-    lib_id = lib.get("Id") or ""
+def print_library(client: EmbyClient, library: dict) -> None:
+    """Print the canonical library detail view and its recent items."""
+    library_id = library.get("Id") or ""
     count_page = client.get_items(
-        parent_id=lib_id,
+        parent_id=library_id,
         item_type=SHOW_LIBRARY_ITEM_TYPES,
         limit=0,
     )
     total = int(count_page.get("TotalRecordCount") or 0)
 
     recent_page = client.get_items(
-        parent_id=lib_id,
+        parent_id=library_id,
         item_type=SHOW_LIBRARY_ITEM_TYPES,
         limit=SHOW_RECENT_COUNT,
         sort_by="DateCreated",
@@ -170,11 +153,11 @@ def _print_library(client: EmbyClient, lib: dict) -> None:
     recent = recent_page.get("Items") or []
 
     print("Library")
-    _print_kv("id", lib_id)
-    _print_kv("name", lib.get("Name"))
+    _print_kv("id", library_id)
+    _print_kv("name", library.get("Name"))
     _print_kv(
         "type",
-        lib.get("CollectionType") or lib.get("Type") or "Library",
+        library.get("CollectionType") or library.get("Type") or "Library",
     )
     print()
     print("Content")
@@ -182,36 +165,3 @@ def _print_library(client: EmbyClient, lib: dict) -> None:
     print()
     print(f"Recently added (last {SHOW_RECENT_COUNT})")
     _print_recent_items(recent)
-
-
-def _cmd_show_item(client: EmbyClient, args: argparse.Namespace) -> None:
-    item_id = (getattr(args, "id", None) or "").strip()
-    try:
-        item = client.get_item_info(item_id, fields=SHOW_ITEM_FIELDS)
-    except (requests.RequestException, RuntimeError) as exc:
-        print(f"error: fetching item {item_id}: {exc}", file=sys.stderr)
-        sys.exit(1)
-    _print_media_item(item)
-
-
-def _cmd_show_library(client: EmbyClient, args: argparse.Namespace) -> None:
-    library_id = (getattr(args, "id", None) or "").strip()
-    libraries = client.get_libraries()
-    lib = find_library(libraries, library_id=library_id)
-    if not lib:
-        print(f"Library id '{library_id}' not found. Available:")
-        print_available_libraries(libraries)
-        sys.exit(1)
-    _print_library(client, lib)
-
-
-def cmd_show(client: EmbyClient, args: argparse.Namespace) -> None:
-    err = validate_show_args(args)
-    if err:
-        print(err, file=sys.stderr)
-        sys.exit(1)
-
-    if mode_is_library(args):
-        _cmd_show_library(client, args)
-        return
-    _cmd_show_item(client, args)
