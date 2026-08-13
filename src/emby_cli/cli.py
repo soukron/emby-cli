@@ -107,6 +107,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Bypass disk cache read and refresh it from API",
     )
 
+    col_list = col_sub.add_parser(
+        "list",
+        help="List all collections (alias for search --count all)",
+    )
+    col_list.add_argument(
+        "--order-by",
+        choices=["name", "id", "items", "year"],
+        default=None,
+    )
+    col_list.add_argument("--desc", action="store_true")
+    col_list.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass disk cache read and refresh it from API",
+    )
+
     col_show = col_sub.add_parser("show", help="Show a collection and its members")
     col_show.add_argument("query", nargs="?", metavar="QUERY")
     col_show.add_argument("--id", help="Collection ID or unique ID prefix")

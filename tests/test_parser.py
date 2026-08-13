@@ -412,3 +412,13 @@ def test_collection_set_multiple_assignments():
     ])
     assert args.id == "1234"
     assert args.rest == ["name=Peliculas", "short-name=Pelis"]
+
+
+def test_collection_list_parses_order_by():
+    args = build_parser().parse_args([
+        "collection", "list", "--order-by", "items", "--desc", "--no-cache",
+    ])
+    assert args.collection_command == "list"
+    assert args.order_by == "items"
+    assert args.desc is True
+    assert args.no_cache is True

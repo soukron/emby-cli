@@ -51,6 +51,12 @@ def test_validate_collection_accepts_repeated_csv_members():
     )) is None
 
 
+def test_validate_collection_list_requires_no_extra_args():
+    assert validate_collection_args(argparse.Namespace(
+        collection_command="list",
+    )) is None
+
+
 def test_validate_collection_set_requires_selector_and_assignments():
     assert validate_collection_args(argparse.Namespace(
         collection_command="set", query=None, id=None, collection_id=None,

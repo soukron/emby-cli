@@ -203,6 +203,10 @@ cli.py  →  validate_*_args (pre-auth)  →  commands/<topic>.py
 - Put **HTTP and cache keys** in `api/*.py`, not in commands.
 - Register subcommands in `cli.py` + `help.COMMAND_SUMMARIES`; document user-facing
   behavior in `README.md`.
+- For catalog listing commands, prefer a dedicated **`list`** subcommand as an
+  alias of **`search --count all`** (no QUERY, no default `--count` cap). Keep
+  **`search [QUERY]`** for substring filters and truncated previews. Reuse the
+  same listing handler in `commands/<topic>.py` for both entry points.
 
 **Caching rules (all entities):**
 
@@ -268,7 +272,11 @@ Shared pattern (`mode_args.py`) for **`search`** and **`download`**:
 
 ### Collections
 
-- `collection show/delete/rename/add-item/remove-item` select a collection with
+- `collection list` lists every `BoxSet` (alias of `collection search --count all`).
+  Supports `--order-by`, `--desc`, and `--no-cache` like search.
+- `collection search [QUERY]` filters by name substring; `--count` defaults to 30,
+  use `--count all` for the full catalog (same output as `list` without QUERY).
+- `collection show/delete/rename/add-item/remove-item/set` select a collection with
   one positional QUERY or `--id` (exact/unique prefix), never both. There is no
   redundant `--collection` flag.
 - Name resolution is case-insensitive substring matching; ambiguity prints a
@@ -318,7 +326,7 @@ Identity headers / User-Agent: `emby-cli/<version>` (`constants.CLIENT_NAME`). `
 
 ### Data cache isolation
 
-- Read-only commands (`search`, `show`, `play`, `info`, collection search/show) can use disk cache for metadata.
+- Read-only commands (`search`, `show`, `play`, `info`, collection list/search/show) can use disk cache for metadata.
 - `download` must bypass data cache.
 - Collection mutations resolve uncached and invalidate catalog/detail/member keys immediately.
 - Cache keys must include **server URL + resolved user ID** (and endpoint params) so

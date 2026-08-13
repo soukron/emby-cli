@@ -67,6 +67,8 @@ def validate_collection_args(args: argparse.Namespace) -> str | None:
         except (TypeError, ValueError) as exc:
             return str(exc) if str(exc).startswith("--count") else "--count must be N or all"
         return None
+    if command == "list":
+        return None
     if command == "create":
         if not _text(args, "name"):
             return "provide a collection name"
@@ -232,8 +234,13 @@ def _resolve_members(client: EmbyClient, args: argparse.Namespace) -> tuple[list
     return [str(item.get("Id") or "") for item in result.items], len(result.errors)
 
 
-def _cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
-    query = _text(args, "query") or ""
+def _cmd_collection_listing(
+    client: EmbyClient,
+    args: argparse.Namespace,
+    *,
+    query: str,
+    count: int | None,
+) -> None:
     collections = client.collections.search(
         query,
         use_cache=True,
@@ -244,7 +251,6 @@ def _cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
         _text(args, "order_by"),
         bool(getattr(args, "desc", False)),
     )
-    count = _parse_count(getattr(args, "count", SEARCH_COUNT_DEFAULT))
     shown = rows if count is None else rows[:count]
     if not shown:
         print("No results.")
@@ -254,6 +260,16 @@ def _cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
         print(f"\nTotal: {len(shown)} (out of {len(rows)})\n")
     else:
         print(f"\nTotal: {len(shown)}\n")
+
+
+def _cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
+    query = _text(args, "query") or ""
+    count = _parse_count(getattr(args, "count", SEARCH_COUNT_DEFAULT))
+    _cmd_collection_listing(client, args, query=query, count=count)
+
+
+def _cmd_list(client: EmbyClient, args: argparse.Namespace) -> None:
+    _cmd_collection_listing(client, args, query="", count=None)
 
 
 def _print_overview(value: object) -> None:
@@ -397,6 +413,7 @@ def cmd_collection(client: EmbyClient, args: argparse.Namespace) -> None:
     command = args.collection_command
     handlers = {
         "search": _cmd_search,
+        "list": _cmd_list,
         "show": _cmd_show,
         "create": _cmd_create,
         "delete": _cmd_delete,

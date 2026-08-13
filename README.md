@@ -88,11 +88,17 @@ members. A positional name is a case-insensitive substring; use `--id` when a
 name is ambiguous:
 
 ```bash
+emby-cli collection list
+emby-cli collection list --order-by items --desc
 emby-cli collection search
 emby-cli collection search "star" --order-by year --desc
 emby-cli collection show "Star Wars"
 emby-cli collection show --id 1234
 ```
+
+`collection list` is an alias for `collection search --count all` (every
+`BoxSet`, no name filter). Use `collection search [QUERY]` when you want to
+filter or limit results (`--count` defaults to 30).
 
 Create, rename, and manage Movie members:
 
@@ -188,8 +194,8 @@ Library downloads match the library **name** (case-insensitive, unique match req
 
 ### Data cache
 
-Read-only commands (`search`, `show`, `play`, `info`, `collection search`, and
-`collection show`) use a JSON disk cache under
+Read-only commands (`search`, `show`, `play`, `info`, `collection list`,
+`collection search`, and `collection show`) use a JSON disk cache under
 `~/.cache/emby-cli/data` (or under `EMBY_CACHE_DIR/data`).
 
 - Default TTL: **600 seconds** (`EMBY_DATA_CACHE_TTL` to override).

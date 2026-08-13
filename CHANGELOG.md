@@ -6,6 +6,7 @@ Added:
 
 - `collection search` and `collection show` for paginated `BoxSet` discovery,
   name/ID resolution, metadata, and generic member listings.
+- `collection list` as an obvious alias for `collection search --count all`.
 - `collection create`, `rename`, `add-item`, `remove-item`, and guarded `delete`
   operations. Delete requires interactive confirmation unless `--yes` is passed.
 - Repeatable/CSV `--item` values for collection membership. Movie members are

@@ -43,6 +43,22 @@ def test_collection_search_output_and_count(capsys):
     search.assert_called_once_with("s", use_cache=True)
 
 
+def test_collection_list_shows_all_without_count_cap(capsys):
+    client = _client()
+    collections = [
+        {"Id": "1", "Name": "First", "ChildCount": 2, "ProductionYear": 2000},
+        {"Id": "2", "Name": "Second", "ChildCount": 4, "ProductionYear": 2010},
+    ]
+    with patch.object(client.collections, "search", return_value=collections) as search:
+        cmd_collection(client, _args("list"))
+    out = capsys.readouterr().out
+    assert "First" in out
+    assert "Second" in out
+    assert "Total: 2" in out
+    assert "out of" not in out
+    search.assert_called_once_with("", use_cache=True)
+
+
 def test_collection_show_lists_generic_existing_members(capsys):
     client = _client()
     collection = {"Id": "10", "Name": "Mixed", "Type": "BoxSet"}
