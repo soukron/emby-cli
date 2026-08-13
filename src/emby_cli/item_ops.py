@@ -465,7 +465,6 @@ def play_one_item(
     res = classify_resolution(item_video_width(item))
     year = item.get("ProductionYear", "?")
     prefix = f"[{idx}/{total}] " if idx is not None and total is not None else ""
-    print()
     print(f"{prefix}Playing: {item.get('Name')} ({year}) [{item.get('Type')}, {res}]")
     try:
         url = client.resolve_direct_stream_url(item_id)
