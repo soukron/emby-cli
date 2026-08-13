@@ -101,6 +101,19 @@ def test_parse_item_refs_rejects_empty_ids(values):
         parse_item_refs(values)
 
 
+def test_normalize_collection_member_type():
+    from emby_cli.collection_ops import (
+        allowed_collection_member_types,
+        normalize_collection_member_type,
+    )
+
+    assert normalize_collection_member_type("movie") == "Movie"
+    assert normalize_collection_member_type("music") == "Audio"
+    assert normalize_collection_member_type("bad") is None
+    assert allowed_collection_member_types(None) == frozenset({"Movie"})
+    assert allowed_collection_member_types("audio") == frozenset({"Audio"})
+
+
 def test_resolve_members_keeps_movies_and_reports_other_types():
     client = _client()
     with patch.object(
@@ -116,6 +129,19 @@ def test_resolve_members_keeps_movies_and_reports_other_types():
     assert result.errors == [
         "item '2' has type Audio; allowed collection types: Movie",
     ]
+
+
+def test_resolve_members_accepts_audio_when_type_is_audio():
+    client = _client()
+    song = {"Id": "2", "Name": "Song", "Type": "Audio"}
+    with patch.object(client.items, "get", return_value=song):
+        result = resolve_collection_members(
+            client,
+            ["2"],
+            allowed_types=frozenset({"Audio"}),
+        )
+    assert result.items == [song]
+    assert result.errors == []
 
 
 def test_resolve_members_uses_unique_prefix_after_exact_404():

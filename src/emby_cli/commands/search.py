@@ -10,6 +10,7 @@ import requests
 from emby_cli.client import EmbyClient
 from emby_cli.constants import SEARCH_COUNT_DEFAULT
 from emby_cli.data_cache import load_json, save_json
+from emby_cli.deprecation import warn_deprecated
 from emby_cli.download_ops import find_library, match_libraries
 from emby_cli.item_ops import (
     build_item_listing_query,
@@ -317,6 +318,7 @@ def validate_search_args(args: argparse.Namespace) -> str | None:
 
 
 def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
+    warn_deprecated("search")
     err = validate_search_args(args)
     if err:
         print(err, file=sys.stderr)

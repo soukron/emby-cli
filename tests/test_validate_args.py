@@ -50,8 +50,14 @@ def test_validate_collection_rejects_empty_csv_member_before_auth():
 def test_validate_collection_accepts_repeated_csv_members():
     assert validate_collection_args(argparse.Namespace(
         collection_command="remove-item", query="Saga", id=None,
-        items=["1,2", "3"],
+        items=["1,2", "3"], member_type=None,
     )) is None
+
+
+def test_validate_collection_rejects_unknown_member_type():
+    assert validate_collection_args(argparse.Namespace(
+        collection_command="create", name="Saga", items=[], member_type="playlist",
+    )) == "error: --type must be one of audio, episode, episodes, movie, movies, music, tv, video, videos"
 
 
 def test_validate_collection_list_requires_no_extra_args():
@@ -509,6 +515,22 @@ def test_validate_item_download_requires_selector():
     assert validate_item_args(argparse.Namespace(
         item_command="download", query=None, id=None, item_id=None, pick_best_item=False,
     )) == "provide exactly one media item QUERY or --id"
+    assert validate_item_args(argparse.Namespace(
+        item_command="download",
+        query="Matrix",
+        id=None,
+        item_id=None,
+        from_file="titles.txt",
+        pick_best_item=False,
+    )) == "With --from-file, do not pass QUERY or --id"
+    assert validate_item_args(argparse.Namespace(
+        item_command="download",
+        query=None,
+        id=None,
+        item_id=None,
+        from_file="titles.txt",
+        pick_best_item=False,
+    )) is None
 
 
 def test_validate_library_download_requires_selector():

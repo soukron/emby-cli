@@ -128,6 +128,7 @@ class ItemsService:
             "release-date": "PremiereDate",
             "added": "DateCreated",
             "resolution": "Resolution",
+            "size": "Size",
         }
         emby_sort = ItemsService._emby_sort_fields(mapping.get(sort_by or "", "DateCreated"))
         order = "Descending" if desc else "Ascending"

@@ -11,9 +11,8 @@ Added:
 - `collection list` as an obvious alias for `collection search --count all`.
 - `collection create`, `rename`, `add-item`, `remove-item`, and guarded `delete`
   operations. Delete requires interactive confirmation unless `--yes` is passed.
-- Repeatable/CSV `--item` values for collection membership. Movie members are
-  supported initially; invalid and non-Movie references are reported while valid
-  members continue, with a non-zero exit when any reference fails.
+- Repeatable/CSV `--item` values for collection membership. `create --type`
+  selects the expected member type (`movie` default, `audio`/`music`, etc.).
 - `collection rename --short-name` to update Emby's `SortName` together with
   `Name`.
 - `collection set KEY=VALUE …` to update collection metadata (`year`,
@@ -23,27 +22,42 @@ Added:
 - `library list`, `library search`, and `library show` for read-only library view
   discovery and inspection (`/Users/{uid}/Views`). `library list` is an alias for
   `library search --count all`. Supports `--type`, `--order-by`, and parent/subcommand
-  `--id` like collections. Legacy `search --library` / `show --library` unchanged.
+  `--id` like collections. Legacy `search --library` / `show --library` are
+  deprecated wrappers.
 - `item list`, `item search`, and `item show` for read-only media discovery and
   inspection via `ItemsService.search()`. `item list` is an alias for
   `item search --count all`. Supports `--type`, `--year`, `--order-by`, and
-  parent/subcommand `--id`. Legacy `search --item` / `show --item` unchanged.
+  parent/subcommand `--id`. Legacy `search --item` / `show --item` are
+  deprecated wrappers.
 - `item download`, `library download`, and `collection download` for bulk and
   single-item downloads via shared `item_ops` helpers. Library and collection
   downloads write into `output/<name>/`; items use flat filenames by default.
+  `item download --from-file` replaces legacy `download --from-file`.
 - `--mirror-path` and `EMBY_PATH_STRIP` / `--path-strip` to recreate server
   subdirectories under the output folder when needed.
 - `library play` and `collection play` to launch an external player for every
   playable item in a library view or collection, with optional `--order-by`.
 - Legacy top-level `download` remains as a thin wrapper over the new helpers.
 
+Deprecated:
+
+- Top-level `search`, `show`, `play`, and `download` emit a stderr warning and
+  remain as compatibility wrappers. Prefer `item`, `library`, and `collection`
+  subcommands instead. `item download --from-file` replaces `download --from-file`;
+  `item play` / `item download` now use strict title resolution for QUERY lines
+  (same as the legacy commands).
+
 Changed:
 
-- `item list` / `item search` / legacy `search --item`: `--order-by` adds
-  `release-date` (`PremiereDate`), `added` (`DateCreated`), and `resolution`
-  (`Resolution,SortName`, same as Emby Web).
+- `collection create` / `add-item` / `remove-item`: `create --type` selects the
+  expected member Emby type (`movie` default, `audio`/`music`, `episode`/`tv`,
+  `video`). `add-item` / `remove-item` accept any supported member type without
+  `--type`. `create` skips the API call when every `--item` fails validation.
+- `item list` / `item search`: `--order-by` adds `release-date` (`PremiereDate`),
+  `added` (`DateCreated`), `resolution` (`Resolution,SortName`), and `size`
+  (`Size,SortName`, same as Emby Web for movies). Legacy `search --item` unchanged.
 - `library play` and `collection play`: optional `--order-by` / `--desc` using the
-  same item sort keys (`year`, `name`, `id`, `release-date`, `added`, `resolution`).
+  same item sort keys (`year`, `name`, `id`, `release-date`, `added`, `resolution`, `size`).
 - Download orchestration, skip logic, and item loops now live in `item_ops.py`;
   `library play` / `collection play` list members via the same
   `ItemListingQuery` + `fetch_item_listing()` path as `item list/search`

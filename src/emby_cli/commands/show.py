@@ -14,6 +14,7 @@ from emby_cli.constants import (
     SHOW_LIBRARY_ITEM_TYPES,
     SHOW_RECENT_COUNT,
 )
+from emby_cli.deprecation import warn_deprecated
 from emby_cli.download_ops import find_library
 from emby_cli.mode_args import mode_is_item, mode_is_library
 from emby_cli.resolve import (
@@ -206,6 +207,7 @@ def _cmd_show_library(client: EmbyClient, args: argparse.Namespace) -> None:
 
 
 def cmd_show(client: EmbyClient, args: argparse.Namespace) -> None:
+    warn_deprecated("show")
     err = validate_show_args(args)
     if err:
         print(err, file=sys.stderr)

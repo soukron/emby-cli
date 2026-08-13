@@ -144,6 +144,46 @@ def test_collection_create_with_no_members(capsys):
     create.assert_called_once_with("Saga", item_ids=[])
 
 
+def test_collection_create_with_audio_members(capsys):
+    client = _client()
+    songs = [
+        {"Id": "11807", "Name": "A", "Type": "Audio"},
+        {"Id": "11806", "Name": "B", "Type": "Audio"},
+    ]
+    with (
+        patch.object(client.items, "get", side_effect=songs),
+        patch.object(
+            client.collections,
+            "create",
+            return_value={"Id": "10", "Name": "Grand Project"},
+        ) as create,
+    ):
+        cmd_collection(
+            client,
+            _args("create", "Grand Project", "--type", "audio", "--item", "11807,11806"),
+        )
+    create.assert_called_once_with("Grand Project", item_ids=["11807", "11806"])
+    assert "Created collection [10] Grand Project" in capsys.readouterr().out
+
+
+def test_collection_create_aborts_when_all_members_rejected(capsys):
+    client = _client()
+    audio = {"Id": "11807", "Name": "Song", "Type": "Audio"}
+    with (
+        patch.object(client.items, "get", return_value=audio),
+        patch.object(client.collections, "create") as create,
+    ):
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_collection(
+                client,
+                _args("create", "Grand Project", "--item", "11807"),
+            )
+    assert exc_info.value.code == 1
+    create.assert_not_called()
+    captured = capsys.readouterr()
+    assert "has type Audio" in captured.err
+
+
 def test_add_items_partial_success_reports_error_and_continues(capsys):
     client = _client()
     collection = {"Id": "10", "Name": "Saga", "Type": "BoxSet"}
@@ -161,10 +201,9 @@ def test_add_items_partial_success_reports_error_and_continues(capsys):
                 _args("add-item", "--id", "10", "--item", "1,2,missing"),
             )
     assert exc_info.value.code == 1
-    add.assert_called_once_with("10", ["1"])
+    add.assert_called_once_with("10", ["1", "2"])
     captured = capsys.readouterr()
-    assert "Done. ok=1 skip=0 error=2" in captured.out
-    assert "has type Audio" in captured.err
+    assert "Done. ok=2 skip=0 error=1" in captured.out
     assert "not found" in captured.err
 
 

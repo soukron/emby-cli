@@ -9,11 +9,14 @@ import textwrap
 from emby_cli.api.collections import COLLECTION_DETAIL_FIELDS
 from emby_cli.client import EmbyClient
 from emby_cli.collection_ops import (
-    COLLECTION_MEMBER_TYPES,
+    ALL_COLLECTION_MEMBER_TYPES,
+    COLLECTION_MEMBER_TYPE_ALIASES,
     CollectionResolutionError,
+    allowed_collection_member_types,
     collection_rows,
     collection_selector_id,
     download_collection,
+    normalize_collection_member_type,
     parse_item_refs,
     parse_set_assignments,
     play_collection,
@@ -75,6 +78,10 @@ def validate_collection_args(args: argparse.Namespace) -> str | None:
     if command == "create":
         if not _text(args, "name"):
             return "provide a collection name"
+        raw_type = _text(args, "member_type")
+        if raw_type and normalize_collection_member_type(raw_type) is None:
+            allowed = ", ".join(sorted(COLLECTION_MEMBER_TYPE_ALIASES.keys()))
+            return f"error: --type must be one of {allowed}"
     elif command == "set":
         query, assignments = _set_args(args)
         collection_id = collection_selector_id(args)
@@ -108,6 +115,12 @@ def validate_collection_args(args: argparse.Namespace) -> str | None:
         if command in {"add-item", "remove-item"} and not refs:
             return "provide at least one --item ID"
     return None
+
+
+def _member_allowed_types(args: argparse.Namespace) -> frozenset[str]:
+    if args.collection_command == "create":
+        return allowed_collection_member_types(_text(args, "member_type"))
+    return ALL_COLLECTION_MEMBER_TYPES
 
 
 def _sort_key_id(row: dict) -> tuple[int, int, str]:
@@ -227,10 +240,11 @@ def _resolve_from_args(
 
 def _resolve_members(client: EmbyClient, args: argparse.Namespace) -> tuple[list[str], int]:
     refs = parse_item_refs(getattr(args, "items", None))
+    allowed_types = _member_allowed_types(args)
     result = resolve_collection_members(
         client,
         refs,
-        allowed_types=COLLECTION_MEMBER_TYPES,
+        allowed_types=allowed_types,
     )
     for message in result.errors:
         print_error(message)
@@ -354,8 +368,13 @@ def _cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
 def _cmd_create(client: EmbyClient, args: argparse.Namespace) -> None:
     item_ids: list[str] = []
     errors = 0
-    if getattr(args, "items", None):
+    refs = parse_item_refs(getattr(args, "items", None))
+    if refs:
         item_ids, errors = _resolve_members(client, args)
+        if not item_ids:
+            if errors:
+                print_done(Stats(error=errors))
+            raise SystemExit(1)
     result = client.collections.create(_text(args, "name") or "", item_ids=item_ids)
     print(f"Created collection [{result.get('Id', '?')}] {result.get('Name') or '?'}")
     if errors:

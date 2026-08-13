@@ -291,9 +291,12 @@ Shared pattern (`mode_args.py`) for **`search`** and **`download`**:
   redundant `--collection` flag.
 - Name resolution is case-insensitive substring matching; ambiguity prints a
   candidate table and exits 1.
-- `add-item` / `remove-item` accept repeated, CSV-aware `--item` values. The
-  allowed-type policy is `COLLECTION_MEMBER_TYPES` (`Movie` initially) so music
-  and other existing Emby types can be enabled without changing transport.
+- `add-item` / `remove-item` accept repeated, CSV-aware `--item` values and allow
+  any supported member type (`Movie`, `Audio`, `Episode`, `Video`) without an
+  extra flag. `create --type` selects the expected type for initial members
+  (aliases in `COLLECTION_MEMBER_TYPE_ALIASES`; default `movie`).
+- `create` with `--item` aborts before `POST /Collections` when every reference
+  fails validation (avoids empty-member server errors).
 - Member failures are independent: report each `error:` on stderr, submit valid
   IDs once, print `Done. ok=… error=…`, and exit 1 if any failed.
 - `rename` changes only `Name`; `--short-name` additionally changes `SortName`.
@@ -314,14 +317,14 @@ Shared pattern (`mode_args.py`) for **`search`** and **`download`**:
   members (`Movie`, `Episode`, `Audio`, `Video`), and opens each DirectStream URL
   via `item_ops.play_items`. Always waits for each player process to exit before
   starting the next item. Supports `--player`, `--order-by`
-  (`year`, `name`, `id`, `release-date`, `added`, `resolution`), `--desc`, and
+  (`year`, `name`, `id`, `release-date`, `added`, `resolution`, `size`), `--desc`, and
   parent/subcommand `--id`.
 
 ### Libraries
 
 Read-only entity commands (`library list`, `library search`, `library show`) plus
 `library download` and `library play`. Legacy `search --library`, `show --library`, and
-`download --library` remain unchanged until a later migration.
+`download --library` are deprecated wrappers (stderr warning).
 
 - `library list` lists every library view (alias of `library search --count all`).
   Supports `--type`, `--order-by` (`name`, `id`, `items`), `--desc`, and `--no-cache`.
@@ -340,7 +343,7 @@ Read-only entity commands (`library list`, `library search`, `library show`) plu
 - `library play` resolves one library by QUERY or `--id`, lists playable items, and
   opens each DirectStream URL via `item_ops.play_items`. Always waits for each
   player process to exit before starting the next item. Supports `--player`,
-  `--order-by` (`year`, `name`, `id`, `release-date`, `added`, `resolution`), and
+  `--order-by` (`year`, `name`, `id`, `release-date`, `added`, `resolution`, `size`), and
   `--desc`.
 - No `create`, `rename`, `delete`, `set`, `add-item`, or `remove-item` for libraries.
 
@@ -348,14 +351,14 @@ Read-only entity commands (`library list`, `library search`, `library show`) plu
 
 Read-only entity commands (`item list`, `item search`, `item show`, `item play`) plus
 `item download` for playable media (`Movie`, `Episode`, `Audio`, `Video`). Legacy
-`search --item`, `show --item`, `download --item`, and `play --item` remain
-unchanged until a later migration.
+`search --item`, `show --item`, `download --item`, and `play --item` are deprecated
+wrappers (stderr warning).
 
 - `item list` lists every matching item (alias of `item search --count all`).
   Uses `item_ops.build_item_listing_query()` + `fetch_item_listing()` →
   `ItemsService.list_items()` (optional `SearchTerm`; optional `ParentId` for scoped lists).
 - `item search [QUERY]` supports `--type`, `--year`, `--order-by`
-  (`year`, `name`, `id`, `release-date`, `added`, `resolution`), `--desc`, and
+  (`year`, `name`, `id`, `release-date`, `added`, `resolution`, `size`), `--desc`, and
   `--no-cache`. Filters, sort, and pagination are delegated to Emby (`SearchTerm`, `IncludeItemTypes`, `Years`,
   `SortBy`/`SortOrder`, `Limit`).
 - `item show` resolves one item by QUERY or `--id` (exact/unique prefix). Parent
@@ -364,12 +367,14 @@ unchanged until a later migration.
   `item_ops` playback helpers (`find_player`, `play_one_item`, `play_item_ids`).
   Supports `--player`, `--wait`, `--pick-best-item`, `--no-cache`, and
   comma-separated `--id`. Parent `--id` may appear before the subcommand.
-  Legacy top-level `play` remains a thin wrapper until deprecation.
+  QUERY lines use strict title resolution (`resolve_title_items`, same as legacy
+  `play --item`). Legacy top-level `play` is a deprecated wrapper.
 - `item download` resolves one item by QUERY or `--id` (CSV supported) and downloads
-  via `item_ops` (`download_items`, `download_item_ids`). Supports `--output`,
-  `--method`, `--force`, `--throttle`, `--pick-best-item`, `--dry-run`, and optional
-  `--mirror-path`.
-  Legacy top-level `download --item` remains a thin wrapper until deprecation.
+  via `item_ops` (`download_items`, `download_item_ids`, `download_from_file`).
+  Supports `--output`, `--method`, `--force`, `--throttle`, `--pick-best-item`,
+  `--dry-run`, `--from-file`, and optional `--mirror-path`. QUERY / `--from-file`
+  use strict title resolution (`resolve_title_items`). Legacy top-level
+  `download --item` / `download --from-file` are deprecated wrappers.
 - No `create`, `rename`, or `delete` for items in this phase.
 
 ### Output streams

@@ -13,7 +13,20 @@ from emby_cli.item_ops import download_items, play_items, playable_items_for_par
 from emby_cli.output import Stats, print_section
 from emby_cli.util import safe_output_dir_name
 
+COLLECTION_MEMBER_TYPE_ALIASES: dict[str, str] = {
+    "movie": "Movie",
+    "movies": "Movie",
+    "audio": "Audio",
+    "music": "Audio",
+    "episode": "Episode",
+    "episodes": "Episode",
+    "tv": "Episode",
+    "video": "Video",
+    "videos": "Video",
+}
+
 COLLECTION_MEMBER_TYPES = frozenset({"Movie"})
+ALL_COLLECTION_MEMBER_TYPES = frozenset(COLLECTION_MEMBER_TYPE_ALIASES.values())
 
 SET_FIELD_ALIASES: dict[str, str] = {
     "year": "ProductionYear",
@@ -24,6 +37,21 @@ SET_FIELD_ALIASES: dict[str, str] = {
 }
 
 DISPLAY_ORDER_VALUES = frozenset({"premieredate", "sortname"})
+
+
+def normalize_collection_member_type(raw: str | None) -> str | None:
+    """Map a user-facing type alias to an Emby item ``Type`` value."""
+    if not raw:
+        return None
+    return COLLECTION_MEMBER_TYPE_ALIASES.get(raw.strip().casefold())
+
+
+def allowed_collection_member_types(raw_type: str | None) -> frozenset[str]:
+    """Return allowed member types; default is ``Movie`` only."""
+    normalized = normalize_collection_member_type(raw_type)
+    if normalized:
+        return frozenset({normalized})
+    return COLLECTION_MEMBER_TYPES
 
 
 class CollectionResolutionError(ValueError):

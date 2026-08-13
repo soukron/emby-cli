@@ -12,7 +12,7 @@ DEVICE_NAME = "emby-cli"
 DEFAULT_OUTPUT = "./downloads"
 DOWNLOADABLE_TYPES = ("Movie", "Episode", "Audio", "Video")
 SEARCH_ITEM_TYPES = ",".join(DOWNLOADABLE_TYPES)
-MEDIA_ITEM_ORDER_BY = ("year", "name", "id", "release-date", "added", "resolution")
+MEDIA_ITEM_ORDER_BY = ("year", "name", "id", "release-date", "added", "resolution", "size")
 # Library "recently added" / content counts: playable media only (no Studio, etc.).
 SHOW_LIBRARY_ITEM_TYPES = "Movie,Episode,Audio"
 # Default --count for search output when N is not specified.

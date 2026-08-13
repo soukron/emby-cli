@@ -77,6 +77,22 @@ def test_items_search_passes_resolution_sort_to_emby():
     assert params["SortOrder"] == "Descending"
 
 
+def test_items_search_passes_size_sort_to_emby():
+    client = _client()
+    with patch.object(client, "_paginate", return_value=([], 0)) as paginate:
+        client.items.search(
+            "",
+            item_types="Movie",
+            sort_by="size",
+            desc=True,
+            use_cache=False,
+        )
+    params = paginate.call_args.args[1]
+    assert params["IncludeItemTypes"] == "Movie"
+    assert params["SortBy"] == "Size,SortName"
+    assert params["SortOrder"] == "Descending"
+
+
 def test_items_search_sorts_ids_client_side():
     client = _client()
     with patch.object(

@@ -254,12 +254,18 @@ def build_parser() -> argparse.ArgumentParser:
     col_create = col_sub.add_parser("create", help="Create a collection")
     col_create.add_argument("name", metavar="NAME")
     col_create.add_argument(
+        "--type",
+        dest="member_type",
+        metavar="TYPE",
+        help="Expected member item type (movie, audio/music, episode/tv, video; default: movie)",
+    )
+    col_create.add_argument(
         "--item",
         dest="items",
         action="append",
         default=[],
         metavar="ID[,ID...]",
-        help="Initial Movie ID(s); repeatable and CSV-aware",
+        help="Initial member ID(s); repeatable and CSV-aware",
     )
 
     col_delete = col_sub.add_parser("delete", help="Delete a collection")
@@ -290,8 +296,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     for name, summary in (
-        ("add-item", "Add Movie items to a collection"),
-        ("remove-item", "Remove Movie items from a collection"),
+        ("add-item", "Add items to a collection"),
+        ("remove-item", "Remove items from a collection"),
     ):
         member_parser = col_sub.add_parser(name, help=summary)
         member_parser.add_argument("query", nargs="?", metavar="QUERY")
@@ -302,7 +308,7 @@ def build_parser() -> argparse.ArgumentParser:
             action="append",
             required=True,
             metavar="ID[,ID...]",
-            help="Movie ID(s); repeatable and CSV-aware",
+            help="Member ID(s); repeatable and CSV-aware",
         )
 
     lib = sub.add_parser("library", help=_help_by_name["library"])
@@ -523,6 +529,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="On ambiguous search results, auto-select best ≤1080p "
              "(default: list matches and fail)",
+    )
+    it_download.add_argument(
+        "--from-file",
+        "-F",
+        metavar="PATH",
+        dest="from_file",
+        help="Download titles from a text file (one per line)",
     )
     _add_download_options(
         it_download,

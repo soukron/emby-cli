@@ -20,6 +20,7 @@ def test_emby_sort_maps_release_date_and_added():
         "Resolution,SortName",
         "Descending",
     )
+    assert ItemsService._emby_sort("size", desc=True) == ("Size,SortName", "Descending")
 
 
 def test_sort_media_items_by_id():

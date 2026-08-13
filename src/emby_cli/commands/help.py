@@ -10,13 +10,13 @@ COMMAND_SUMMARIES: tuple[tuple[str, str], ...] = (
     ("config", "View and switch saved servers (credentials file)"),
     ("version", "Show emby-cli version"),
     ("info", "Show session user, server details, libraries, and item counts"),
-    ("search", "Search media items or libraries"),
-    ("show", "Show details for a media item or library by ID"),
+    ("search", "[deprecated] Search media items or libraries — use item/library/collection search"),
+    ("show", "[deprecated] Show details for a media item or library — use item/library/collection show"),
     ("collection", "Search, manage, play, and download collections"),
     ("library", "Search, inspect, play, and download libraries"),
     ("item", "Search, inspect, play, and download media items"),
-    ("download", "Download media items or libraries"),
-    ("play", "Play a media item using an external player"),
+    ("download", "[deprecated] Download media items or libraries — use item/library/collection download"),
+    ("play", "[deprecated] Play a media item — use item play"),
 )
 
 

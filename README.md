@@ -108,10 +108,11 @@ individually via the same item download pipeline as `item download`.
 `BoxSet`, no name filter). Use `collection search [QUERY]` when you want to
 filter or limit results (`--count` defaults to 30).
 
-Create, rename, and manage Movie members:
+Create, rename, and manage members (`create --type` defaults to `movie`):
 
 ```bash
 emby-cli collection create "Star Wars" --item 456,789
+emby-cli collection create "Grand Project" --type audio --item 11807,11806
 emby-cli collection rename --id 1234 "Star Wars Saga"
 emby-cli collection rename --id 1234 "Star Wars Saga" --short-name "Star Wars 01"
 emby-cli collection add-item --id 1234 --item 456,789 --item 101
@@ -130,12 +131,10 @@ emby-cli collection set "Star Wars" display-order=PremiereDate overview="Saga ov
 Supported fields: `year`, `name`, `short-name`, `display-order`
 (`PremiereDate` or `SortName`), and `overview`.
 
-`--item` is repeatable and accepts comma-separated IDs. In this first version,
-only items whose Emby type is `Movie` can be added or removed. Existing members
-of other types, including music, are still displayed by `collection show`.
-Invalid, missing, ambiguous, or non-Movie members are reported individually;
-valid members in the same command are still processed, and the command exits
-non-zero if any member failed.
+`--item` is repeatable and accepts comma-separated IDs. On `create`, `--type`
+selects the expected Emby item type (`movie` default, `audio`/`music`,
+`episode`/`tv`, `video`). `add-item` and `remove-item` accept any supported
+member type without `--type`.
 
 Deleting is guarded by an interactive confirmation and verifies that the target
 is a `BoxSet`. Use `--yes` for deliberate non-interactive use:
@@ -174,7 +173,8 @@ library collection type (`movies`, `tvshows`, `music`, …). Detail output match
 each item individually via the same item download pipeline as `item download`.
 
 Legacy library browsing via `search --library`, `show --library`, and
-`download --library` still works.
+`download --library` still works but prints a deprecation warning; prefer
+`library search`, `library show`, and `library download`.
 
 ### Media items
 
@@ -184,6 +184,7 @@ Emby search; use `--id` when results are ambiguous:
 ```bash
 emby-cli item list
 emby-cli item list --type movie --year 1999 --order-by year --desc
+emby-cli item search --type movie --order-by size --desc
 emby-cli item search "matrix"
 emby-cli item search --type audio --count all
 emby-cli item show "The Matrix (1999)"
@@ -199,7 +200,8 @@ emby-cli item download --id 123456 --method stream
 `show --item --id`. `item play` mirrors `play --item` / `play --id`; `item download`
 mirrors `download --item` using the same output/method flags.
 
-Legacy `search --item`, `show --item`, `download --item`, and `play --item` still work.
+Legacy `search --item`, `show --item`, `download --item`, and `play --item` still
+work but print a deprecation warning; prefer the `item` subcommands.
 
 ### Play
 
@@ -225,6 +227,7 @@ emby-cli download --item --id 111,222,333
 emby-cli item download --id 123456
 emby-cli download --item "breaking bad S01E01" --pick-best-item
 emby-cli download --library "peliculas 4k"
+emby-cli item download --from-file titles.txt
 emby-cli download --from-file titles.txt
 ```
 

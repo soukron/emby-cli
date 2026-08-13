@@ -6,6 +6,7 @@ import argparse
 import sys
 
 from emby_cli.client import EmbyClient
+from emby_cli.deprecation import warn_deprecated
 from emby_cli.item_ops import find_player, play_item_ids, play_one_item
 from emby_cli.mode_args import resolve_item_id, resolve_query
 from emby_cli.output import print_error
@@ -29,6 +30,7 @@ def validate_play_args(args: argparse.Namespace) -> str | None:
 
 def cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
     """Resolve DirectStreamUrl and open it in an external player."""
+    warn_deprecated("play")
     err = validate_play_args(args)
     if err:
         print(err, file=sys.stderr)

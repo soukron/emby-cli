@@ -89,11 +89,24 @@ def test_item_play_launches_player_for_query():
     client = _client()
     item = {"Id": "100", "Name": "The Matrix", "Type": "Movie", "ProductionYear": 1999}
     with (
-        patch("emby_cli.commands.item.resolve_item", return_value=item),
+        patch("emby_cli.commands.item.resolve_title_items", return_value=[item]),
         patch("emby_cli.commands.item.find_player", return_value=["vlc"]),
         patch("emby_cli.commands.item.play_one_item", return_value=0) as play_one,
     ):
         cmd_item(client, _args("play", "Matrix", "--player", "vlc"))
+    play_one.assert_called_once_with(client, item, ["vlc"], wait=False)
+
+
+def test_item_play_launches_player_for_title_line():
+    client = _client()
+    item = {"Id": "100", "Name": "The Matrix", "Type": "Movie", "ProductionYear": 1999}
+    with (
+        patch("emby_cli.commands.item.resolve_title_items", return_value=[item]) as resolve,
+        patch("emby_cli.commands.item.find_player", return_value=["vlc"]),
+        patch("emby_cli.commands.item.play_one_item", return_value=0) as play_one,
+    ):
+        cmd_item(client, _args("play", "The Matrix (1999)", "--player", "vlc"))
+    resolve.assert_called_once()
     play_one.assert_called_once_with(client, item, ["vlc"], wait=False)
 
 
@@ -111,7 +124,7 @@ def test_item_download_delegates_to_item_ops():
     client = _client()
     item = {"Id": "100", "Name": "The Matrix", "Type": "Movie", "ProductionYear": 1999}
     with (
-        patch("emby_cli.commands.item.resolve_item", return_value=item),
+        patch("emby_cli.commands.item.resolve_title_items", return_value=[item]),
         patch("emby_cli.commands.item.download_items", return_value=Stats(ok=1)) as download_items,
         patch("emby_cli.commands.item.print_done"),
     ):
@@ -119,6 +132,7 @@ def test_item_download_delegates_to_item_ops():
             cmd_item(client, _args("download", "Matrix", "--dry-run"))
     assert exc.value.code == 0
     download_items.assert_called_once()
+    assert download_items.call_args.args[1] == [item]
 
 
 def test_item_search_filters_by_type(capsys):

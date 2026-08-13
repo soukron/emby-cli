@@ -12,6 +12,7 @@ from emby_cli.item_ops import (
     DownloadOpts,
     ItemResolutionError,
     build_item_listing_query,
+    download_from_file,
     download_item_ids,
     download_items,
     fetch_item_listing,
@@ -23,7 +24,7 @@ from emby_cli.item_ops import (
     resolve_item,
 )
 from emby_cli.output import print_done, print_error
-from emby_cli.resolve import pick_best_item, print_item_choices
+from emby_cli.resolve import pick_best_item, print_item_choices, resolve_title_items
 
 
 def _text(args: argparse.Namespace, name: str) -> str | None:
@@ -73,12 +74,16 @@ def validate_item_args(args: argparse.Namespace) -> str | None:
         if item_id and pick_best:
             return "--pick-best-item can only be used with QUERY"
     elif command == "download":
+        from_file = getattr(args, "from_file", None)
         query = _text(args, "query")
         item_id = item_selector_id(args)
         pick_best = getattr(args, "pick_best_item", False) is True
-        if bool(query) == bool(item_id):
+        if from_file:
+            if query or item_id:
+                return "With --from-file, do not pass QUERY or --id"
+        elif bool(query) == bool(item_id):
             return "provide exactly one media item QUERY or --id"
-        if item_id and pick_best:
+        elif item_id and pick_best:
             return "--pick-best-item can only be used with QUERY"
     else:
         return "provide an item subcommand"
@@ -134,6 +139,27 @@ def _resolve_from_args(
         raise SystemExit(1) from None
 
 
+def _resolve_title_from_args(
+    client: EmbyClient,
+    args: argparse.Namespace,
+    *,
+    pick_best: bool = False,
+    allow_season_all: bool = False,
+) -> list[dict]:
+    query = _text(args, "query")
+    if not query:
+        raise SystemExit(1)
+    items = resolve_title_items(
+        client,
+        query,
+        pick_best=pick_best,
+        allow_season_all=allow_season_all,
+    )
+    if items is None:
+        raise SystemExit(1)
+    return items
+
+
 def _cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
     wait = getattr(args, "wait", False) is True
     pick_best = getattr(args, "pick_best_item", False) is True
@@ -156,13 +182,37 @@ def _cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
             raise SystemExit(rc)
         return
 
-    item = _resolve_from_args(client, args, use_cache=True, pick_best=pick_best)
-    rc = play_one_item(client, item, player_cmd, wait=wait)
+    items = _resolve_title_from_args(client, args, pick_best=pick_best)
+    rc = play_one_item(client, items[0], player_cmd, wait=wait)
     if rc != 0:
         raise SystemExit(rc)
 
 
+def _cmd_download_from_file(client: EmbyClient, args: argparse.Namespace) -> None:
+    opts = DownloadOpts.from_args(args)
+    pick_best = getattr(args, "pick_best_item", False) is True
+    if opts.dry_run:
+        print("*** DRY RUN — no files will be downloaded ***\n")
+    rc = download_from_file(
+        client,
+        args.from_file,
+        opts.output,
+        method=opts.method,
+        force=args.force,
+        throttle=opts.throttle,
+        dry_run=opts.dry_run,
+        pick_best=pick_best,
+        mirror_path=opts.mirror_path,
+        path_strip=opts.path_strip,
+    )
+    raise SystemExit(rc)
+
+
 def _cmd_download(client: EmbyClient, args: argparse.Namespace) -> None:
+    if getattr(args, "from_file", None):
+        _cmd_download_from_file(client, args)
+        return
+
     opts = DownloadOpts.from_args(args)
     pick_best = getattr(args, "pick_best_item", False) is True
     if opts.dry_run:
@@ -185,10 +235,15 @@ def _cmd_download(client: EmbyClient, args: argparse.Namespace) -> None:
         print_done(stats)
         raise SystemExit(stats.exit_code())
 
-    item = _resolve_from_args(client, args, use_cache=False, pick_best=pick_best)
+    items = _resolve_title_from_args(
+        client,
+        args,
+        pick_best=pick_best,
+        allow_season_all=True,
+    )
     stats = download_items(
         client,
-        [item],
+        items,
         opts.output,
         method=opts.method,
         force=args.force,

@@ -415,6 +415,16 @@ def test_collection_set_multiple_assignments():
     assert args.rest == ["name=Peliculas", "short-name=Pelis"]
 
 
+def test_collection_create_parses_member_type():
+    args = build_parser().parse_args([
+        "collection", "create", "Grand Project", "--type", "audio", "--item", "1,2",
+    ])
+    assert args.member_type == "audio"
+    assert args.collection_command == "create"
+    assert args.name == "Grand Project"
+    assert args.items == ["1,2"]
+
+
 def test_collection_list_parses_order_by():
     args = build_parser().parse_args([
         "collection", "list", "--order-by", "items", "--desc", "--no-cache",
@@ -491,10 +501,14 @@ def test_item_list_parses_type_year_and_order_by():
     assert args.no_cache is True
 
 
-def test_item_search_rejects_unknown_order_by():
-    parser = build_parser()
-    with pytest.raises(SystemExit):
-        parser.parse_args(["item", "search", "--order-by", "size"])
+def test_item_search_parses_size_order_by():
+    args = build_parser().parse_args([
+        "item", "search", "--type", "movie", "--order-by", "size", "--desc",
+    ])
+    assert args.item_command == "search"
+    assert args.item_type == "movie"
+    assert args.order_by == "size"
+    assert args.desc is True
 
 
 def test_item_play_parses_query_player_and_pick_best():
@@ -526,6 +540,15 @@ def test_item_download_parses_output_method_and_dry_run():
     assert args.output == "/tmp/out"
     assert args.method == "stream"
     assert args.force is True
+    assert args.dry_run is True
+
+
+def test_item_download_from_file_parses():
+    args = build_parser().parse_args([
+        "item", "download", "--from-file", "titles.txt", "--dry-run",
+    ])
+    assert args.item_command == "download"
+    assert args.from_file == "titles.txt"
     assert args.dry_run is True
 
 
