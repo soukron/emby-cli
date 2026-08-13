@@ -126,7 +126,7 @@ class ItemsService:
             "name": "SortName",
             "year": "ProductionYear",
             "release-date": "PremiereDate",
-            "added": "DateCreated",
+            "added-date": "DateCreated",
             "resolution": "Resolution",
             "size": "Size",
         }

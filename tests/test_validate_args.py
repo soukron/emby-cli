@@ -226,7 +226,7 @@ def test_validate_search_rejects_library_sort_year():
         year=None,
     )
     assert validate_search_args(args) == (
-        "--order-by year/size/resolution/release-date/added can only be used with --item/--media-item"
+        "--order-by year/size/resolution/release-date/added-date can only be used with --item/--media-item"
     )
 
 
@@ -242,7 +242,7 @@ def test_validate_search_rejects_library_sort_size():
         year=None,
     )
     assert validate_search_args(args) == (
-        "--order-by year/size/resolution/release-date/added can only be used with --item/--media-item"
+        "--order-by year/size/resolution/release-date/added-date can only be used with --item/--media-item"
     )
 
 

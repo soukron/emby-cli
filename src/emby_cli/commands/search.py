@@ -303,9 +303,12 @@ def validate_search_args(args: argparse.Namespace) -> str | None:
     if mode_is_library(args) and year is not None:
         return "--year can only be used with --item/--media-item"
     if mode_is_library(args) and sort_by in {
-        "year", "size", "resolution", "release-date", "added",
+        "year", "size", "resolution", "release-date", "added-date",
     }:
-        return "--order-by year/size/resolution/release-date/added can only be used with --item/--media-item"
+        return (
+            "--order-by year/size/resolution/release-date/added-date "
+            "can only be used with --item/--media-item"
+        )
     if not mode_is_library(args) and sort_by == "items":
         return "--order-by items can only be used with --library"
     if (not mode_is_library(args)) and getattr(args, "id", None) and (item_type_raw or year is not None):

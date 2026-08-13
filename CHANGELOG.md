@@ -9,11 +9,13 @@
 - `--no-parse-query` on `item play` and `item download` to resolve QUERY via Emby
   search instead of title-line parsing (default: parse for play/download).
 - `Series` column in item search tables when results include episodes.
+- `--order-by added-date` for sorting by library add date (`DateCreated`).
 
 ### Changed
 
 - `item search`, `item list`, and `item show` no longer parse QUERY by default;
   use `--parse-query` for structured title lines or `--year` to narrow results.
+- Renamed item `--order-by added` to `added-date`.
 
 ## 0.7.0
 

@@ -708,7 +708,7 @@ def build_parser() -> argparse.ArgumentParser:
     sr.add_argument(
         "--order-by",
         dest="order_by",
-        choices=["year", "name", "id", "size", "resolution", "items", "release-date", "added"],
+        choices=["year", "name", "id", "size", "resolution", "items", "release-date", "added-date"],
         default=None,
         help="Order search results by year, name, id, size, resolution, or items",
     )

@@ -317,7 +317,7 @@ Shared pattern (`mode_args.py`) for **`search`** and **`download`**:
   members (`Movie`, `Episode`, `Audio`, `Video`), and opens each DirectStream URL
   via `item_ops.play_items`. Always waits for each player process to exit before
   starting the next item. Supports `--player`, `--order-by`
-  (`year`, `name`, `id`, `release-date`, `added`, `resolution`, `size`), `--desc`, and
+  (`year`, `name`, `id`, `release-date`, `added-date`, `resolution`, `size`), `--desc`, and
   parent/subcommand `--id`.
 
 ### Libraries
@@ -343,7 +343,7 @@ Read-only entity commands (`library list`, `library search`, `library show`) plu
 - `library play` resolves one library by QUERY or `--id`, lists playable items, and
   opens each DirectStream URL via `item_ops.play_items`. Always waits for each
   player process to exit before starting the next item. Supports `--player`,
-  `--order-by` (`year`, `name`, `id`, `release-date`, `added`, `resolution`, `size`), and
+  `--order-by` (`year`, `name`, `id`, `release-date`, `added-date`, `resolution`, `size`), and
   `--desc`.
 - No `create`, `rename`, `delete`, `set`, `add-item`, or `remove-item` for libraries.
 
@@ -358,7 +358,7 @@ wrappers (stderr warning).
   Uses `item_ops.build_item_listing_query()` + `fetch_item_listing()` →
   `ItemsService.list_items()` (optional `SearchTerm`; optional `ParentId` for scoped lists).
 - `item search [QUERY]` supports `--type`, `--year`, `--order-by`
-  (`year`, `name`, `id`, `release-date`, `added`, `resolution`, `size`), `--desc`,
+  (`year`, `name`, `id`, `release-date`, `added-date`, `resolution`, `size`), `--desc`,
   `--no-cache`, and `--parse-query` (title-line syntax: `Movie (1999)`, `Show S01E01`).
   Default QUERY mode is strict Emby `SearchTerm`. Filters, sort, and pagination are
   delegated to Emby (`SearchTerm`, `IncludeItemTypes`, `Years`, `SortBy`/`SortOrder`,

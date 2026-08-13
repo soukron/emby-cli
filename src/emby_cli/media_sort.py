@@ -44,7 +44,7 @@ def sort_media_items(items: list[dict], order_by: str, *, desc: bool) -> list[di
             reverse=desc,
         )
         return with_date + without_date
-    if order_by == "added":
+    if order_by == "added-date":
         with_date = [row for row in items if row.get("DateCreated")]
         without_date = [row for row in items if not row.get("DateCreated")]
         with_date.sort(

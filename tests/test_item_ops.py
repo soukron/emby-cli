@@ -181,7 +181,7 @@ def test_playable_items_for_parent_delegates_to_fetch_item_listing():
     listing = ItemListingQuery(
         parent_id="569",
         item_types="Movie,Episode,Audio,Video",
-        order_by="added",
+        order_by="added-date",
         desc=True,
         when_unsorted="parent",
     )
@@ -192,7 +192,7 @@ def test_playable_items_for_parent_delegates_to_fetch_item_listing():
         items = playable_items_for_parent(
             client,
             "569",
-            order_by="added",
+            order_by="added-date",
             desc=True,
             use_cache=False,
         )

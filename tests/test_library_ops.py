@@ -106,7 +106,7 @@ def test_play_library_delegates_to_play_items():
             ["vlc"],
             wait=True,
             show_section=False,
-            order_by="added",
+            order_by="added-date",
             desc=True,
         )
     assert rc == 0
