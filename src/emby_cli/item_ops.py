@@ -75,6 +75,7 @@ class ItemListingQuery:
     order_by: str | None = None
     desc: bool = False
     when_unsorted: ListingDefault = "catalog"
+    strict_name: bool = True
 
 
 def item_selector_id(args: object) -> str | None:
@@ -119,6 +120,63 @@ def split_listing_search_query(
     if parsed_year is None:
         return text, year
     return title, year if year is not None else parsed_year
+
+
+_STRICT_EPISODE_CODE_RE = re.compile(r"^S(\d+)E(\d+)$", re.IGNORECASE)
+
+
+def emby_search_term_for_strict_query(query: str) -> str:
+    """Pick an Emby ``SearchTerm`` that recalls candidates for strict name filtering."""
+    text = query.strip()
+    if not text:
+        return text
+    tokens = text.split()
+    text_tokens = [token for token in tokens if not _STRICT_EPISODE_CODE_RE.match(token)]
+    if text_tokens:
+        return max(text_tokens, key=len)
+    return text
+
+
+def matches_strict_name_query(item: dict, query: str) -> bool:
+    """Return whether *query* matches the item's display or raw name (case-insensitive)."""
+    needle = query.strip().casefold()
+    if not needle:
+        return True
+
+    label = item_label(item).casefold()
+    raw_name = str(item.get("Name") or "").casefold()
+    haystacks = {label, raw_name}
+
+    if len(query.split()) == 1 and _STRICT_EPISODE_CODE_RE.match(query.strip()):
+        return any(
+            haystack == needle or haystack.startswith(f"{needle} ")
+            for haystack in haystacks
+            if haystack
+        )
+
+    return any(needle in haystack for haystack in haystacks if haystack)
+
+
+def search_strict_name_items(
+    client: EmbyClient,
+    listing: ItemListingQuery,
+    *,
+    use_cache: bool = True,
+) -> list[dict]:
+    """Fetch catalog rows from Emby, then keep only strict display-name matches."""
+    emby_term = emby_search_term_for_strict_query(listing.query)
+    items, _total = client.items.list_items(
+        query=emby_term,
+        parent_id=listing.parent_id,
+        item_types=listing.item_types,
+        year=listing.year,
+        limit=None,
+        sort_by=listing.order_by,
+        desc=listing.desc,
+        when_unsorted=listing.when_unsorted,
+        use_cache=use_cache,
+    )
+    return [item for item in items if matches_strict_name_query(item, listing.query)]
 
 
 def _listing_includes_episodes(item_types: str) -> bool:
@@ -203,6 +261,7 @@ def build_item_listing_query(
             order_by=order_by,
             desc=desc,
             when_unsorted=when_unsorted,
+            strict_name=True,
         )
     title, season, _episode, parsed_year = parse_title_line(text)
     effective_year = year if year is not None else parsed_year
@@ -217,6 +276,7 @@ def build_item_listing_query(
             order_by=order_by,
             desc=desc,
             when_unsorted=when_unsorted,
+            strict_name=False,
         )
     search_query, effective_year = split_listing_search_query(text, year=year)
     return ItemListingQuery(
@@ -228,6 +288,7 @@ def build_item_listing_query(
         order_by=order_by,
         desc=desc,
         when_unsorted=when_unsorted,
+        strict_name=False,
     )
 
 
@@ -246,6 +307,9 @@ def fetch_item_listing(
             item_types=listing.item_types,
         )
         return _apply_listing_sort_and_limit(items, listing)
+    if listing.query and listing.parent_id is None and listing.strict_name:
+        filtered = search_strict_name_items(client, listing, use_cache=use_cache)
+        return _apply_listing_sort_and_limit(filtered, listing)
     return client.items.list_items(
         query=listing.query,
         parent_id=listing.parent_id,
@@ -346,12 +410,12 @@ def resolve_item(
                     use_cache=use_cache,
                 )
         else:
-            matches, _total = client.items.search(
-                query.strip(),
+            listing = ItemListingQuery(
+                query=query.strip(),
                 item_types=item_types,
-                year=None,
-                use_cache=use_cache,
+                when_unsorted="catalog",
             )
+            matches = search_strict_name_items(client, listing, use_cache=use_cache)
         selector = f"query '{query}'"
     else:
         raise ItemResolutionError("provide a media item QUERY or --id")

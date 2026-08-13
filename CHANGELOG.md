@@ -15,6 +15,8 @@
 
 - `item search`, `item list`, and `item show` no longer parse QUERY by default;
   use `--parse-query` for structured title lines or `--year` to narrow results.
+- Strict catalog search filters by display name after Emby recall (phrase match for
+  multi-word queries; episode codes like `S01E01` must prefix the display name).
 - Renamed item `--order-by added` to `added-date`.
 
 ## 0.7.0

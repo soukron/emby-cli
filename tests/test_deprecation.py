@@ -20,6 +20,7 @@ def test_warn_deprecated_prints_to_stderr(capsys):
     assert "warning:" in captured.err
     assert "`search` is deprecated" in captured.err
     assert "item search" in captured.err
+    assert captured.err.endswith("\n\n")
 
 
 def test_cmd_play_warns(capsys):

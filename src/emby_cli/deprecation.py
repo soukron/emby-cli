@@ -13,7 +13,7 @@ _LEGACY_REPLACEMENTS: dict[str, str] = {
 
 
 def warn_deprecated(command: str) -> None:
-    """Print a one-line deprecation warning to stderr."""
+    """Print a deprecation warning to stderr, followed by a blank line."""
     replacement = _LEGACY_REPLACEMENTS.get(command)
     if not replacement:
         return
@@ -21,3 +21,4 @@ def warn_deprecated(command: str) -> None:
         f"warning: `{command}` is deprecated; {replacement}.",
         file=sys.stderr,
     )
+    print(file=sys.stderr)

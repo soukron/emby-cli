@@ -136,7 +136,10 @@ def _cmd_download_library(client: EmbyClient, args: argparse.Namespace) -> None:
                 "Re-run with --id, for example:\n"
                 f'  emby-cli download --library --id {matches[0].get("Id", "<id>")}'
             )
-            print_library_choices(library_rows(client, matches))
+            print_library_choices(
+                library_rows(client, matches),
+                leading_blank=True,
+            )
             sys.exit(1)
         lib = matches[0]
 

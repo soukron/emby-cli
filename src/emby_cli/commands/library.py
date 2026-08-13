@@ -103,7 +103,7 @@ def _sort_library_rows(rows: list[dict], order_by: str | None, desc: bool) -> li
 def _print_libraries(rows: list[dict], *, sort_rows: bool = True) -> None:
     if sort_rows:
         rows = sort_for_display(rows)
-    print_library_choices(rows, sort_rows=False)
+    print_library_choices(rows, sort_rows=False, leading_blank=True)
 
 
 def _print_resolution_error(exc: LibraryResolutionError) -> None:

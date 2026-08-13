@@ -62,7 +62,10 @@ def test_item_count_all_lists_everything(capsys):
 def test_item_query_shows_out_of_when_truncated(capsys):
     client = MagicMock()
     client.items.list_items.return_value = (
-        [{"Id": str(i), "Name": f"T{i}", "Type": "Movie", "ProductionYear": 2000 + i} for i in range(2)],
+        [
+            {"Id": str(i), "Name": f"Matrix {i}", "Type": "Movie", "ProductionYear": 2000 + i}
+            for i in range(14)
+        ],
         14,
     )
     args = MagicMock(
@@ -76,7 +79,7 @@ def test_item_query_shows_out_of_when_truncated(capsys):
     out = capsys.readouterr().out
     assert "Total: 2 (out of 14)" in out
     client.items.list_items.assert_called_once_with(
-        **_list_items_kwargs(query="matrix", limit=2),
+        **_list_items_kwargs(query="matrix"),
     )
 
 
@@ -84,7 +87,7 @@ def test_item_query_plain_total_when_complete(capsys):
     client = MagicMock()
     client.items.list_items.return_value = (
         [
-            {"Id": "1", "Name": "A", "Type": "Movie", "ProductionYear": 1999},
+            {"Id": "1", "Name": "unique title", "Type": "Movie", "ProductionYear": 1999},
         ],
         1,
     )
@@ -147,7 +150,6 @@ def test_item_query_filters_by_type_and_year(capsys):
             query="spider-man",
             item_types="Movie",
             year=2026,
-            limit=20,
         ),
     )
 
@@ -253,9 +255,9 @@ def test_item_query_sorts_by_year_desc(capsys):
     client = MagicMock()
     client.items.list_items.return_value = (
         [
-            {"Id": "2", "Name": "B", "Type": "Movie", "ProductionYear": 2026},
-            {"Id": "3", "Name": "C", "Type": "Movie", "ProductionYear": 2024},
-            {"Id": "1", "Name": "A", "Type": "Movie", "ProductionYear": 2021},
+            {"Id": "2", "Name": "Spider-Man B", "Type": "Movie", "ProductionYear": 2026},
+            {"Id": "3", "Name": "Spider-Man C", "Type": "Movie", "ProductionYear": 2024},
+            {"Id": "1", "Name": "Spider-Man A", "Type": "Movie", "ProductionYear": 2021},
         ],
         3,
     )
@@ -348,11 +350,11 @@ def test_library_query_sorts_by_items_desc_using_computed_counts(capsys):
 
 def test_item_query_sorts_by_size_desc(capsys):
     client = MagicMock()
-    client.items.search.return_value = (
+    client.items.list_items.return_value = (
         [
-            {"Id": "1", "Name": "A", "Type": "Movie", "MediaSources": [{"Size": 1000}]},
-            {"Id": "2", "Name": "B", "Type": "Movie", "MediaSources": [{"Size": 3000}]},
-            {"Id": "3", "Name": "C", "Type": "Movie", "MediaSources": [{"Size": 2000}]},
+            {"Id": "1", "Name": "Title X A", "Type": "Movie", "MediaSources": [{"Size": 1000}]},
+            {"Id": "2", "Name": "Title X B", "Type": "Movie", "MediaSources": [{"Size": 3000}]},
+            {"Id": "3", "Name": "Title X C", "Type": "Movie", "MediaSources": [{"Size": 2000}]},
         ],
         3,
     )
@@ -372,11 +374,11 @@ def test_item_query_sorts_by_size_desc(capsys):
 
 def test_item_query_sorts_by_resolution_desc(capsys):
     client = MagicMock()
-    client.items.search.return_value = (
+    client.items.list_items.return_value = (
         [
-            {"Id": "1", "Name": "A", "Type": "Movie", "MediaStreams": [{"Type": "Video", "Width": 1280}]},
-            {"Id": "2", "Name": "B", "Type": "Movie", "MediaStreams": [{"Type": "Video", "Width": 3840}]},
-            {"Id": "3", "Name": "C", "Type": "Movie", "MediaStreams": [{"Type": "Video", "Width": 1920}]},
+            {"Id": "1", "Name": "Title X A", "Type": "Movie", "MediaStreams": [{"Type": "Video", "Width": 1280}]},
+            {"Id": "2", "Name": "Title X B", "Type": "Movie", "MediaStreams": [{"Type": "Video", "Width": 3840}]},
+            {"Id": "3", "Name": "Title X C", "Type": "Movie", "MediaStreams": [{"Type": "Video", "Width": 1920}]},
         ],
         3,
     )
@@ -473,7 +475,7 @@ def test_item_query_uses_disk_cache_between_calls(capsys, tmp_path, monkeypatch)
     with patch.object(
         client,
         "_paginate",
-        return_value=([{"Id": "1", "Name": "A", "Type": "Movie", "ProductionYear": 2020}], 1),
+        return_value=([{"Id": "1", "Name": "The Matrix", "Type": "Movie", "ProductionYear": 2020}], 1),
     ) as paginate:
         search_mod.cmd_search(client, args)
         _ = capsys.readouterr()
@@ -503,14 +505,14 @@ def test_item_query_no_cache_refreshes_disk(capsys, tmp_path, monkeypatch):
         client,
         "_paginate",
         side_effect=[
-            ([{"Id": "1", "Name": "First", "Type": "Movie", "ProductionYear": 2020}], 1),
-            ([{"Id": "2", "Name": "Second", "Type": "Movie", "ProductionYear": 2021}], 1),
+            ([{"Id": "1", "Name": "The Matrix", "Type": "Movie", "ProductionYear": 2020}], 1),
+            ([{"Id": "2", "Name": "Matrix Reloaded", "Type": "Movie", "ProductionYear": 2021}], 1),
         ],
     ) as paginate:
         search_mod.cmd_search(client, args)
         first = capsys.readouterr().out
         search_mod.cmd_search(client, args)
         second = capsys.readouterr().out
-    assert "First" in first
-    assert "Second" in second
+    assert "The Matrix" in first
+    assert "Matrix Reloaded" in second
     assert paginate.call_count == 2

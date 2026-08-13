@@ -110,7 +110,7 @@ def _print_total(shown: int, available: int | None = None) -> None:
 def _print_resolution_error(exc: ItemResolutionError) -> None:
     print_error(str(exc))
     if exc.matches:
-        print_item_choices(exc.matches, sort_rows=True)
+        print_item_choices(exc.matches, sort_rows=True, leading_blank=True)
 
 
 def _resolve_from_args(
@@ -137,7 +137,7 @@ def _resolve_from_args(
         if pick_best and exc.matches:
             best = pick_best_item(exc.matches)
             if best is not None:
-                print_item_choices(exc.matches, selected=best)
+                print_item_choices(exc.matches, selected=best, leading_blank=True)
                 return best
         _print_resolution_error(exc)
         raise SystemExit(1) from None
@@ -319,7 +319,7 @@ def _cmd_item_listing(
     if not shown:
         print("No results.")
         return
-    print_item_choices(shown, sort_rows=False)
+    print_item_choices(shown, sort_rows=False, leading_blank=True)
     _print_total(len(shown), available if available > len(shown) else None)
 
 

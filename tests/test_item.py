@@ -28,7 +28,7 @@ def test_item_search_output_and_count(capsys):
         {"Id": "1", "Name": "Alpha", "Type": "Movie", "ProductionYear": 2000},
         {"Id": "2", "Name": "Beta", "Type": "Movie", "ProductionYear": 2010},
     ]
-    with patch.object(client.items, "list_items", return_value=([items[1]], 2)) as list_items:
+    with patch.object(client.items, "list_items", return_value=(items, 2)) as list_items:
         cmd_item(client, _args("search", "a", "--count", "1", "--order-by", "year", "--desc"))
     out = capsys.readouterr().out
     assert "Beta" in out
@@ -39,7 +39,7 @@ def test_item_search_output_and_count(capsys):
         parent_id=None,
         item_types="Movie,Episode,Audio,Video",
         year=None,
-        limit=1,
+        limit=None,
         sort_by="year",
         desc=True,
         when_unsorted="catalog",
@@ -51,14 +51,14 @@ def test_item_search_strict_by_default(capsys):
     client = _client()
     matrix = {"Id": "100", "Name": "The Matrix", "Type": "Movie", "ProductionYear": 1999}
     with patch.object(client.items, "list_items", return_value=([matrix], 1)) as list_items:
-        cmd_item(client, _args("search", "Matrix (1999)", "--type", "movie"))
+        cmd_item(client, _args("search", "Matrix", "--type", "movie"))
     assert "The Matrix" in capsys.readouterr().out
     list_items.assert_called_once_with(
-        query="Matrix (1999)",
+        query="Matrix",
         parent_id=None,
         item_types="Movie",
         year=None,
-        limit=30,
+        limit=None,
         sort_by=None,
         desc=False,
         when_unsorted="catalog",

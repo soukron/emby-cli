@@ -15,7 +15,7 @@ from emby_cli.download_ops import find_library, match_libraries
 from emby_cli.item_ops import (
     build_item_listing_query,
     fetch_item_listing,
-    item_types_for_api,
+    search_strict_name_items,
 )
 from emby_cli.mode_args import mode_is_library, resolve_query
 from emby_cli.resolve import (
@@ -380,15 +380,26 @@ def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
 
     search_query = query or ""
     if sort_by in {"size", "resolution"}:
-        items, _total = client.items.search(
-            search_query,
-            item_types=item_types_for_api(item_type_raw),
+        listing = build_item_listing_query(
+            query=search_query,
+            raw_type=item_type_raw,
             year=year,
-            limit=None,
-            sort_by=None,
-            desc=False,
-            use_cache=not no_cache,
+            count=None,
         )
+        if listing.strict_name and listing.query:
+            items = search_strict_name_items(
+                client,
+                listing,
+                use_cache=not no_cache,
+            )
+        else:
+            items, _total = client.items.list_items(
+                query=listing.query,
+                item_types=listing.item_types,
+                year=listing.year,
+                limit=None,
+                use_cache=not no_cache,
+            )
         ordered = _sort_rows(items, sort_by=sort_by, desc=desc, is_library=False)
         shown = ordered if count is None else ordered[:count]
         available = len(ordered)

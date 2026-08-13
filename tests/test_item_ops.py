@@ -13,9 +13,11 @@ from emby_cli.item_ops import (
     ItemListingQuery,
     ItemResolutionError,
     build_item_listing_query,
+    emby_search_term_for_strict_query,
     episodes_for_title_line,
     fetch_item_listing,
     item_types_for_api,
+    matches_strict_name_query,
     normalize_item_type,
     playable_items_for_parent,
     resolve_item,
@@ -70,6 +72,73 @@ def test_split_listing_search_query_parses_title_year():
     assert split_listing_search_query("Matrix (1999)") == ("Matrix", 1999)
     assert split_listing_search_query("matrix", year=1999) == ("matrix", 1999)
     assert split_listing_search_query("Matrix (1999)", year=2000) == ("Matrix", 2000)
+
+
+def test_emby_search_term_for_strict_query_prefers_text_token():
+    assert emby_search_term_for_strict_query("S01E01 Piloto") == "Piloto"
+    assert emby_search_term_for_strict_query("S01E01") == "S01E01"
+
+
+def test_matches_strict_name_query_phrase_and_episode_code():
+    pilot = {
+        "Name": "Piloto",
+        "Type": "Episode",
+        "ParentIndexNumber": 1,
+        "IndexNumber": 1,
+    }
+    blue_bloods = {
+        "Name": "Blue Bloods (Familia de policias) - Piloto",
+        "Type": "Episode",
+        "ParentIndexNumber": 1,
+        "IndexNumber": 1,
+    }
+    assert matches_strict_name_query(pilot, "S01E01 Piloto")
+    assert matches_strict_name_query(pilot, "Piloto")
+    assert not matches_strict_name_query(blue_bloods, "S01E01 Piloto")
+    assert matches_strict_name_query(
+        {"Name": "S01E01 Twirlywoos", "Type": "Episode"},
+        "S01E01",
+    )
+    assert not matches_strict_name_query(
+        {"Name": "Show - S01E01 - Episode 1", "Type": "Episode"},
+        "S01E01",
+    )
+
+
+def test_fetch_item_listing_strict_filters_multiword_query():
+    client = _client()
+    candidates = [
+        {
+            "Id": "1",
+            "Name": "Piloto",
+            "Type": "Episode",
+            "ParentIndexNumber": 1,
+            "IndexNumber": 1,
+        },
+        {
+            "Id": "2",
+            "Name": "Blue Bloods (Familia de policias) - Piloto",
+            "Type": "Episode",
+            "ParentIndexNumber": 1,
+            "IndexNumber": 1,
+        },
+    ]
+    listing = build_item_listing_query(query="S01E01 Piloto", raw_type="episode")
+    with patch.object(client.items, "list_items", return_value=(candidates, 2)) as list_items:
+        shown, total = fetch_item_listing(client, listing, use_cache=False)
+    assert shown == [candidates[0]]
+    assert total == 1
+    list_items.assert_called_once_with(
+        query="Piloto",
+        parent_id=None,
+        item_types="Episode",
+        year=None,
+        limit=None,
+        sort_by=None,
+        desc=False,
+        when_unsorted="catalog",
+        use_cache=False,
+    )
 
 
 def test_build_item_listing_query_strict_by_default():
@@ -149,12 +218,17 @@ def test_resolve_item_by_title_line_episode():
 
 def test_resolve_item_strict_sends_full_query():
     client = _client()
-    with patch.object(client.items, "search", return_value=([ITEMS[0]], 1)) as search:
-        assert resolve_item(client, query="Matrix (1999)", use_cache=False) == ITEMS[0]
-    search.assert_called_once_with(
-        "Matrix (1999)",
+    with patch.object(client.items, "list_items", return_value=([ITEMS[0]], 1)) as list_items:
+        assert resolve_item(client, query="Matrix", use_cache=False) == ITEMS[0]
+    list_items.assert_called_once_with(
+        query="Matrix",
+        parent_id=None,
         item_types="Movie,Episode,Audio,Video",
         year=None,
+        limit=None,
+        sort_by=None,
+        desc=False,
+        when_unsorted="catalog",
         use_cache=False,
     )
 
@@ -204,24 +278,29 @@ def test_playable_items_for_parent_delegates_to_fetch_item_listing():
 
 def test_resolve_item_by_query_unique_match():
     client = _client()
-    with patch.object(client.items, "search", return_value=([ITEMS[0]], 1)) as search:
+    with patch.object(client.items, "list_items", return_value=([ITEMS[0]], 1)) as list_items:
         assert resolve_item(client, query="matrix", use_cache=False) == ITEMS[0]
-    search.assert_called_once_with(
-        "matrix",
+    list_items.assert_called_once_with(
+        query="matrix",
+        parent_id=None,
         item_types="Movie,Episode,Audio,Video",
         year=None,
+        limit=None,
+        sort_by=None,
+        desc=False,
+        when_unsorted="catalog",
         use_cache=False,
     )
 
 
 def test_resolve_item_reports_ambiguous_candidates():
     client = _client()
-    with patch.object(client.items, "search", return_value=(ITEMS, 2)) as search:
+    with patch.object(client.items, "list_items", return_value=(ITEMS, 2)) as list_items:
         with pytest.raises(ItemResolutionError) as exc_info:
             resolve_item(client, query="e", use_cache=False)
     assert exc_info.value.matches == ITEMS
     assert "ambiguous" in str(exc_info.value)
-    search.assert_called_once()
+    list_items.assert_called_once()
 
 
 def test_resolve_item_by_id_prefix_uses_catalog():

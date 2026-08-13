@@ -178,10 +178,10 @@ Legacy library browsing via `search --library`, `show --library`, and
 
 ### Media items
 
-Search movies, episodes, audio, and other playable items. By default QUERY is sent
-to Emby as free text (`SearchTerm`); refine with `--type`, `--year`, or `--count`.
-Use `--parse-query` for structured lines such as `Matrix (1999)` or
-`Californication S01E01`. Episode rows include a `Series` column when applicable.
+Search movies, episodes, audio, and other playable items. By default QUERY is matched
+against the display name (strict substring/phrase filter after an Emby recall pass);
+refine with `--type`, `--year`, or `--count`. Use `--parse-query` for structured lines
+such as `Matrix (1999)` or `Californication S01E01`. Episode rows include a `Series` column when applicable.
 Use `--id` when results are ambiguous:
 
 ```bash
@@ -189,6 +189,7 @@ emby-cli item list
 emby-cli item list --type movie --year 1999 --order-by year --desc
 emby-cli item search --type movie --order-by size --desc
 emby-cli item search "Piloto" --type episode
+emby-cli item search "S01E01 Piloto" --type episode
 emby-cli item search "Matrix (1999)" --parse-query --type movie
 emby-cli item search "Californication S01E01" --parse-query
 emby-cli item search --type audio --count all
