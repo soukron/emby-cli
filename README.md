@@ -31,8 +31,8 @@ emby-cli info
 **3. Search and play:**
 
 ```bash
-emby-cli search --item "matrix"
-emby-cli play --item "matrix (1999)" --pick-best-item
+emby-cli item search "matrix"
+emby-cli item play "matrix (1999)" --pick-best-item
 ```
 
 Use `emby-cli help` for the command list, and `emby-cli <command> -h` for options.
@@ -54,32 +54,24 @@ emby-cli info       # user, server, library count, content totals
 
 
 
-### Search
+### Search and show
 
-Find movies, episodes, and other media — or list libraries:
-
-```bash
-emby-cli search --item "fast and furious"
-emby-cli search --item "fast and furious" --count 5
-emby-cli search --item "spider-man" --type Movie --year 2017
-emby-cli search --item --id 123456
-emby-cli search --library "peliculas"
-emby-cli search --library --count all
-emby-cli search --library --order-by items --desc --count 1
-emby-cli search --item "matrix" --order-by resolution --desc --no-cache
-```
-
-`--item` and `--library` accept the search text directly. You can also pass `--id` when you already know the Emby ID.
-
-### Show details
-
-Inspect one title or one library by Emby ID (use `search` first if you need to find the ID):
+Find movies, episodes, and other media, or inspect a result:
 
 ```bash
-emby-cli show --item --id 123456
-emby-cli show --library --id 614156
-emby-cli show --item --id 123456 --no-cache
+emby-cli item search "fast and furious"
+emby-cli item search "fast and furious" --count 5
+emby-cli item search "spider-man" --type movie --year 2017
+emby-cli item search "matrix" --order-by resolution --desc --no-cache
+emby-cli item show --id 123456
+emby-cli library search "peliculas"
+emby-cli library list --order-by items --desc
+emby-cli library show --id 614156
 ```
+
+Use positional QUERY for name resolution or `--id` when you already know the
+Emby ID. `item`, `library`, and `collection` each provide their own `search`,
+`list`, and `show` subcommands where applicable.
 
 ### Collections
 
@@ -168,13 +160,8 @@ emby-cli library play --id 614156
 ```
 
 `library list` is an alias for `library search --count all`. `--type` filters by
-library collection type (`movies`, `tvshows`, `music`, …). Detail output matches
-`show --library --id`. `library download` resolves the library and downloads
+library collection type (`movies`, `tvshows`, `music`, …). `library download` resolves the library and downloads
 each item individually via the same item download pipeline as `item download`.
-
-Legacy library browsing via `search --library`, `show --library`, and
-`download --library` still works but prints a deprecation warning; prefer
-`library search`, `library show`, and `library download`.
 
 ### Media items
 
@@ -203,12 +190,8 @@ emby-cli item download "matrix (1999)" --pick-best-item
 emby-cli item download --id 123456 --method stream
 ```
 
-`item list` is an alias for `item search --count all`. Detail output matches
-`show --item --id`. `item play` mirrors `play --item` / `play --id`; `item download`
-mirrors `download --item` using the same output/method flags.
-
-Legacy `search --item`, `show --item`, `download --item`, and `play --item` still
-work but print a deprecation warning; prefer the `item` subcommands.
+`item list` is an alias for `item search --count all`. `item play` and
+`item download` accept a positional QUERY or explicit `--id`.
 
 ### Play
 
@@ -216,29 +199,28 @@ Open a title in an external player (VLC, mpv, IINA, …):
 
 ```bash
 emby-cli item play "matrix (1999)" --pick-best-item
-emby-cli play --item "matrix (1999)" --pick-best-item
-emby-cli play --id 123456
-emby-cli play --id 111,222,333
-emby-cli play --id 123456 --player vlc --wait
+emby-cli item play --id 123456
+emby-cli item play --id 111,222,333
+emby-cli item play --id 123456 --player vlc --wait
 ```
 
-Set `EMBY_PLAYER` if the player is not found automatically. A comma-separated list of IDs works for `play --id` and `download --item --id` (not for `show` / `search`).
+Set `EMBY_PLAYER` if the player is not found automatically. A comma-separated
+list of IDs works for `item play --id` and `item download --id`.
 
 ### Download
 
 Download a single title, a whole library, or a list of titles from a file:
 
 ```bash
-emby-cli download --item --id 123456
-emby-cli download --item --id 111,222,333
 emby-cli item download --id 123456
-emby-cli download --item "breaking bad S01E01" --pick-best-item
-emby-cli download --library "peliculas 4k"
+emby-cli item download --id 111,222,333
+emby-cli item download "breaking bad S01E01" --pick-best-item
+emby-cli library download "peliculas 4k"
 emby-cli item download --from-file titles.txt
-emby-cli download --from-file titles.txt
 ```
 
-A comma-separated list of IDs (`a,b,c`) is supported for `download --item --id` and `play --id`. `show` and `search` accept a single `--id` each.
+A comma-separated list of IDs (`a,b,c`) is supported for `item download --id`
+and `item play --id`. The `show` and `search` subcommands accept one `--id`.
 
 Useful options:
 
@@ -254,7 +236,7 @@ Useful options:
 | `-m` / `--method`  | Download method                                            |
 
 
-**Title lines** in `--item` / `--from-file` can look like:
+**Title lines** in positional QUERY / `--from-file` can look like:
 
 - `Movie (2010)`
 - `Show S01E05`
@@ -266,15 +248,14 @@ Library downloads match the library **name** (case-insensitive, unique match req
 
 ### Data cache
 
-Read-only commands (`search`, `show`, `play`, `info`, `collection list`,
-`collection search`, `collection show`, `library list`, `library search`, and
-`library show`, `item list`, `item search`, `item show`, and `item play`) use a JSON disk cache under
+Read-only commands (`info`, collection/library/item list/search/show, and the
+supported play commands) use a JSON disk cache under
 `~/.cache/emby-cli/data` (or under `EMBY_CACHE_DIR/data`).
 
 - Default TTL: **600 seconds** (`EMBY_DATA_CACHE_TTL` to override).
 - `--no-cache`: do not read cache; call API directly and refresh cache on disk.
 - Cache keys are isolated by **server URL + user ID** to prevent cross-server mixing.
-- `download` never uses this data cache.
+- Canonical `item` / `library` / `collection` downloads never use this data cache.
 - Collection mutations resolve against fresh server state and invalidate affected
   collection cache entries immediately.
 
@@ -338,7 +319,6 @@ Flags override environment variables. Optional template: `.env.example` (export 
 | `EMBY_METHOD`                     | `download`, `stream`, or `hls`                      |
 | `EMBY_PATH_STRIP`                 | Server path prefix to strip with `--mirror-path`      |
 | `EMBY_PLAYER`                     | External player command or path                     |
-| `EMBY_ITEM_ID`                    | Default `--id` for item download / play             |
 | `EMBY_CACHE_DIR`                  | Credentials directory (default `~/.cache/emby-cli`) |
 | `EMBY_NO_AUTH_CACHE`              | `1` = disable session cache                         |
 | `EMBY_DATA_CACHE_TTL`             | Data-cache TTL in seconds (default `600`)           |

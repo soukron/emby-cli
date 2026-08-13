@@ -251,7 +251,7 @@ def resolve_title_items(
     """Resolve a title line to one or more items (strict).
 
     Returns a list of items to act on, or None on not-found / ambiguity.
-    When *allow_season_all* is True (download --media-item/--from-file) and the line is ``Sxx`` without
+    When *allow_season_all* is True (``item download`` / ``--from-file``) and the line is ``Sxx`` without
     ``Exx``, returns all episodes in that season (with optional pick_best per
     episode version). When False (play), season-only lines refuse.
     """

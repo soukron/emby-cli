@@ -33,3 +33,23 @@ def test_sort_media_items_by_id():
     ]
     ordered = sort_media_items(items, "id", desc=False)
     assert [item["Id"] for item in ordered] == ["2", "100"]
+
+
+def test_sort_media_items_by_size_desc():
+    items = [
+        {"Id": "1", "Name": "A", "MediaSources": [{"Size": 1000}]},
+        {"Id": "2", "Name": "B", "MediaSources": [{"Size": 3000}]},
+        {"Id": "3", "Name": "C", "MediaSources": [{"Size": 2000}]},
+    ]
+    ordered = sort_media_items(items, "size", desc=True)
+    assert [item["Id"] for item in ordered] == ["2", "3", "1"]
+
+
+def test_sort_media_items_by_resolution_desc():
+    items = [
+        {"Id": "1", "Name": "A", "MediaStreams": [{"Type": "Video", "Width": 1280}]},
+        {"Id": "2", "Name": "B", "MediaStreams": [{"Type": "Video", "Width": 3840}]},
+        {"Id": "3", "Name": "C", "MediaStreams": [{"Type": "Video", "Width": 1920}]},
+    ]
+    ordered = sort_media_items(items, "resolution", desc=True)
+    assert [item["Id"] for item in ordered] == ["2", "3", "1"]

@@ -1,4 +1,4 @@
-"""Library name/id matching helpers for search, show, and legacy download."""
+"""Library name/id matching and choice-row helpers."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def library_rows(
     *,
     item_types: str = SHOW_LIBRARY_ITEM_TYPES,
 ) -> list[dict]:
-    """Build choice-table rows with ItemCount filtered like ``show --library``."""
+    """Build choice-table rows with the canonical library item-type filter."""
     rows: list[dict] = []
     for lib in libraries:
         page = client.get_items(

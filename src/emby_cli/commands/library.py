@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 
 from emby_cli.client import EmbyClient
-from emby_cli.commands.show import _print_library
 from emby_cli.constants import SEARCH_COUNT_DEFAULT, SHOW_LIBRARY_ITEM_TYPES
+from emby_cli.detail_output import print_library
 from emby_cli.download_ops import library_rows
 from emby_cli.item_ops import DownloadOpts, find_player
 from emby_cli.library_ops import (
@@ -196,7 +196,7 @@ def _cmd_list(client: EmbyClient, args: argparse.Namespace) -> None:
 
 def _cmd_show(client: EmbyClient, args: argparse.Namespace) -> None:
     lib = _resolve_from_args(client, args, use_cache=True)
-    _print_library(client, lib)
+    print_library(client, lib)
 
 
 def _cmd_download(client: EmbyClient, args: argparse.Namespace) -> None:

@@ -16,16 +16,12 @@ import requests
 from emby_cli.client import AuthenticationError, EmbyClient
 from emby_cli.commands.collection import cmd_collection, validate_collection_args
 from emby_cli.commands.config import cmd_config
-from emby_cli.commands.download import cmd_download, validate_download_args
 from emby_cli.commands.help import COMMAND_SUMMARIES, cmd_help
 from emby_cli.commands.info import cmd_info
 from emby_cli.commands.item import cmd_item, validate_item_args
 from emby_cli.commands.library import cmd_library, validate_library_args
 from emby_cli.commands.login import cmd_login
 from emby_cli.commands.logout import cmd_logout
-from emby_cli.commands.play import cmd_play, validate_play_args
-from emby_cli.commands.search import cmd_search, validate_search_args
-from emby_cli.commands.show import cmd_show, validate_show_args
 from emby_cli.commands.version import cmd_version
 from emby_cli.constants import DEFAULT_OUTPUT, MEDIA_ITEM_ORDER_BY, SEARCH_COUNT_DEFAULT
 from emby_cli.credentials import (
@@ -38,8 +34,6 @@ _FORCE_HELP = "Re-download even if local file already matches"
 
 
 def _uses_data_cache(command: str, args: argparse.Namespace) -> bool:
-    if command == "download":
-        return False
     subcommand = getattr(args, "item_command", None) or getattr(args, "library_command", None)
     if command == "item" and subcommand == "download":
         return False
@@ -564,237 +558,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Resolve QUERY via Emby search instead of title-line parsing",
     )
 
-    dl = sub.add_parser(
-        "download",
-        help=(
-            f"{_help_by_name['download']} "
-            "(authorized servers only; respect the server's terms)"
-        ),
-    )
-    mode = dl.add_mutually_exclusive_group(required=True)
-    mode.add_argument(
-        "--item",
-        "--media-item",
-        nargs="?",
-        const="",
-        default=None,
-        metavar="QUERY",
-        dest="item",
-        help="Download media items; optional QUERY, or use with --id "
-             "(--media-item is an alias)",
-    )
-    mode.add_argument(
-        "--library",
-        nargs="?",
-        const="",
-        default=None,
-        metavar="QUERY",
-        help="Download a library; optional QUERY, or use with --id",
-    )
-    mode.add_argument(
-        "--from-file",
-        "-F",
-        metavar="PATH",
-        dest="from_file",
-        help="Download titles from a text file (one per line)",
-    )
-    dl.add_argument(
-        "--id",
-        default=None,
-        help="Media item or library ID",
-    )
-    dl.add_argument(
-        "--search",
-        help="Search query (alternative to QUERY on --item / --library)",
-    )
-    dl.add_argument(
-        "--dry-run",
-        "-n",
-        action="store_true",
-        help="Resolve only; do not download",
-    )
-    dl.add_argument(
-        "--pick-best-item",
-        action="store_true",
-        help="On ambiguous search results, auto-select best ≤1080p "
-             "(default: list matches and fail)",
-    )
-    dl.add_argument(
-        "--output",
-        "-o",
-        default=env("EMBY_OUTPUT", DEFAULT_OUTPUT),
-        help=f"Output directory (env: EMBY_OUTPUT, default: {DEFAULT_OUTPUT})",
-    )
-    dl.add_argument("--force", "-f", action="store_true", help=_FORCE_HELP)
-    dl.add_argument(
-        "--throttle",
-        "-t",
-        type=float,
-        nargs="?",
-        const=1.0,
-        default=0,
-        help="Limit speed to playback rate (optional multiplier; default: off)",
-    )
-    dl.add_argument(
-        "--method",
-        "-m",
-        default=env("EMBY_METHOD", "download"),
-        choices=["download", "stream", "hls"],
-        help="download, stream, or hls (env: EMBY_METHOD)",
-    )
-    dl.add_argument(
-        "--mirror-path",
-        action="store_true",
-        help="Recreate source directory structure under the output folder",
-    )
-    dl.add_argument(
-        "--path-strip",
-        default=env("EMBY_PATH_STRIP"),
-        help="With --mirror-path, strip this server path prefix (env: EMBY_PATH_STRIP)",
-    )
-
-    sr = sub.add_parser("search", help=_help_by_name["search"])
-    sr_mode = sr.add_mutually_exclusive_group(required=True)
-    sr_mode.add_argument(
-        "--item",
-        "--media-item",
-        nargs="?",
-        const="",
-        default=None,
-        metavar="QUERY",
-        dest="item",
-        help="Search media items; optional QUERY, or use with --id "
-             "(--media-item is an alias)",
-    )
-    sr_mode.add_argument(
-        "--library",
-        nargs="?",
-        const="",
-        default=None,
-        metavar="QUERY",
-        help="Search libraries; optional QUERY, or use with --id",
-    )
-    sr.add_argument(
-        "--id",
-        default=None,
-        help="Media item or library ID",
-    )
-    sr.add_argument(
-        "--search",
-        help="Search query (alternative to QUERY on --item / --library)",
-    )
-    sr.add_argument(
-        "--count",
-        "-n",
-        default=str(SEARCH_COUNT_DEFAULT),
-        metavar="N|all",
-        help=(
-            f"Max media item results (default: {SEARCH_COUNT_DEFAULT}); "
-            "use 'all' to list everything"
-        ),
-    )
-    sr.add_argument(
-        "--type",
-        dest="item_type",
-        metavar="TYPE",
-        help="Filter media items by type (e.g. Movie, Episode, Audio, Video)",
-    )
-    sr.add_argument(
-        "--year",
-        type=int,
-        metavar="YYYY",
-        help="Filter media items by production year",
-    )
-    sr.add_argument(
-        "--order-by",
-        dest="order_by",
-        choices=["year", "name", "id", "size", "resolution", "items", "release-date", "added-date"],
-        default=None,
-        help="Order search results by year, name, id, size, resolution, or items",
-    )
-    sr.add_argument(
-        "--desc",
-        action="store_true",
-        help="Sort in descending order",
-    )
-    sr.add_argument(
-        "--no-cache",
-        action="store_true",
-        help="Bypass disk cache read and refresh it from API",
-    )
-
-    pl = sub.add_parser("play", help=_help_by_name["play"])
-    pl.add_argument(
-        "--item",
-        nargs="?",
-        const="",
-        default=None,
-        metavar="QUERY",
-        dest="item",
-        help="Media item to play; optional QUERY, or use with --id",
-    )
-    pl.add_argument(
-        "--id",
-        default=None,
-        help="Media item ID to play",
-    )
-    pl.add_argument(
-        "--search",
-        help="Title line (alternative to QUERY on --item): "
-             "'Movie (2010)' or 'Show (2000) S01E01'. Allows partial matches.",
-    )
-    pl.add_argument(
-        "--player",
-        default=env("EMBY_PLAYER"),
-        help="External player command or path (env: EMBY_PLAYER), e.g. vlc or "
-             "/Applications/VLC.app/Contents/MacOS/VLC",
-    )
-    pl.add_argument(
-        "--wait",
-        action="store_true",
-        help="Block until the player process exits (default: detach and return)",
-    )
-    pl.add_argument(
-        "--pick-best-item",
-        action="store_true",
-        help="On ambiguous search results, auto-select best ≤1080p "
-             "(default: list matches and fail)",
-    )
-    pl.add_argument(
-        "--no-cache",
-        action="store_true",
-        help="Bypass disk cache read and refresh it from API",
-    )
-
-    sh = sub.add_parser("show", help=_help_by_name["show"])
-    sh_mode = sh.add_mutually_exclusive_group(required=True)
-    sh_mode.add_argument(
-        "--item",
-        "--media-item",
-        action="store_const",
-        const=True,
-        default=None,
-        dest="item",
-        help="Show a media item (requires --id; --media-item is an alias)",
-    )
-    sh_mode.add_argument(
-        "--library",
-        action="store_const",
-        const=True,
-        default=None,
-        help="Show a library (requires --id)",
-    )
-    sh.add_argument(
-        "--id",
-        required=True,
-        help="Media item or library ID",
-    )
-    sh.add_argument(
-        "--no-cache",
-        action="store_true",
-        help="Bypass disk cache read and refresh it from API",
-    )
-
     sub.add_parser("version", help=_help_by_name["version"])
     info = sub.add_parser("info", help=_help_by_name["info"])
     info.add_argument(
@@ -856,14 +619,6 @@ def _validate_command_args(command: str, args: argparse.Namespace) -> str | None
         return validate_library_args(args)
     if command == "item":
         return validate_item_args(args)
-    if command == "search":
-        return validate_search_args(args)
-    if command == "download":
-        return validate_download_args(args)
-    if command == "play":
-        return validate_play_args(args)
-    if command == "show":
-        return validate_show_args(args)
     return None
 
 
@@ -905,10 +660,6 @@ def main() -> None:
         "collection": cmd_collection,
         "library": cmd_library,
         "item": cmd_item,
-        "download": cmd_download,
-        "search": cmd_search,
-        "play": cmd_play,
-        "show": cmd_show,
     }
     try:
         commands[args.command](client, args)

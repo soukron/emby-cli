@@ -67,15 +67,31 @@ def test_library_list_shows_all_without_count_cap(capsys):
     search.assert_called_once_with("", use_cache=True)
 
 
-def test_library_show_delegates_to_print_library():
+def test_library_show_prints_recent_items(capsys):
     client = _client()
     library = {"Id": "100", "Name": "Movies", "CollectionType": "movies"}
-    with (
-        patch.object(client.libraries, "list", return_value=[library]),
-        patch("emby_cli.commands.library._print_library") as print_library,
+    pages = [
+        {"TotalRecordCount": 42},
+        {"Items": [{
+            "Id": "m1",
+            "Name": "New Movie",
+            "Type": "Movie",
+            "ProductionYear": 2024,
+            "DateCreated": "2024-06-01T12:00:00.0000000Z",
+        }]},
+    ]
+    with patch.object(client.libraries, "list", return_value=[library]), patch.object(
+        client,
+        "get_items",
+        side_effect=pages,
     ):
         cmd_library(client, _args("show", "Movies"))
-    print_library.assert_called_once_with(client, library)
+    out = capsys.readouterr().out
+    assert "name: Movies" in out
+    assert "items: 42" in out
+    assert "Recently added" in out
+    assert out.count("New Movie") == 1
+    assert "2024-06-01 12:00:00" in out
 
 
 def test_library_show_parent_id_before_subcommand():
@@ -83,10 +99,20 @@ def test_library_show_parent_id_before_subcommand():
     library = {"Id": "100", "Name": "Movies", "CollectionType": "movies"}
     with (
         patch.object(client.libraries, "list", return_value=[library]),
-        patch("emby_cli.commands.library._print_library") as print_library,
+        patch("emby_cli.commands.library.print_library") as print_library,
     ):
         cmd_library(client, _args("--id", "100", "show"))
     print_library.assert_called_once_with(client, library)
+
+
+def test_library_show_missing_id_reports_stderr(capsys):
+    client = _client()
+    with patch.object(client.libraries, "list", return_value=[]), pytest.raises(SystemExit) as exc:
+        cmd_library(client, _args("show", "--id", "missing"))
+    assert exc.value.code == 1
+    captured = capsys.readouterr()
+    assert "library id 'missing' not found" in captured.err
+    assert captured.out == ""
 
 
 def test_library_download_delegates_to_library_ops():
@@ -101,6 +127,23 @@ def test_library_download_delegates_to_library_ops():
             cmd_library(client, _args("download", "Movies", "--dry-run"))
     assert exc.value.code == 0
     download.assert_called_once()
+
+
+def test_library_download_ambiguous_prints_candidates(capsys):
+    client = _client()
+    libraries = [
+        {"Id": "a", "Name": "Movies", "CollectionType": "movies"},
+        {"Id": "b", "Name": "Movies 4K", "CollectionType": "movies"},
+    ]
+    with patch.object(client.libraries, "list", return_value=libraries), pytest.raises(
+        SystemExit,
+    ) as exc:
+        cmd_library(client, _args("download", "Movies", "--dry-run"))
+    assert exc.value.code == 1
+    captured = capsys.readouterr()
+    assert "ambiguous" in captured.err
+    assert "Movies" in captured.out
+    assert "Movies 4K" in captured.out
 
 
 def test_library_play_delegates_to_library_ops():
@@ -134,3 +177,43 @@ def test_library_search_filters_by_type(capsys):
     library_rows.assert_called_once()
     passed = library_rows.call_args.args[1]
     assert passed == [libraries[0]]
+
+
+def test_library_search_count_all_is_distinct_from_list(capsys):
+    client = _client()
+    library = {"Id": "1", "Name": "Movies", "CollectionType": "movies"}
+    row = {"Id": "1", "Name": "Movies", "Type": "movies", "ItemCount": 10}
+    with patch.object(client.libraries, "search", return_value=[library]) as search, patch(
+        "emby_cli.commands.library.library_rows",
+        return_value=[row],
+    ):
+        cmd_library(client, _args("search", "Mov", "--count", "all"))
+    assert "Total: 1" in capsys.readouterr().out
+    search.assert_called_once_with("Mov", use_cache=True)
+
+
+def test_library_search_no_cache_sets_client_flag(capsys):
+    client = _client()
+    with patch.object(client.libraries, "search", return_value=[]):
+        cmd_library(client, _args("search", "Movies", "--no-cache"))
+    assert client.no_data_cache is True
+    assert "No results." in capsys.readouterr().out
+
+
+def test_library_search_sorts_by_name_asc(capsys):
+    client = _client()
+    libraries = [
+        {"Id": "2", "Name": "ZZZ", "CollectionType": "movies"},
+        {"Id": "1", "Name": "AAA", "CollectionType": "movies"},
+    ]
+    rows = [
+        {"Id": "2", "Name": "ZZZ", "Type": "movies", "ItemCount": 1},
+        {"Id": "1", "Name": "AAA", "Type": "movies", "ItemCount": 2},
+    ]
+    with (
+        patch.object(client.libraries, "search", return_value=libraries),
+        patch("emby_cli.commands.library.library_rows", return_value=rows),
+    ):
+        cmd_library(client, _args("search", "--count", "all", "--order-by", "name"))
+    out = capsys.readouterr().out
+    assert out.index("AAA") < out.index("ZZZ")

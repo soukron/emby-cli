@@ -41,9 +41,8 @@ CLI to **search**, **inspect** (`show`), **play**, **download/backup** original 
 │   ├── auth_cache.py       # auth.json contexts (kubeconfig-style)
 │   ├── data_cache.py       # JSON cache for read-only metadata calls
 │   ├── credentials.py      # resolve server / user / password
-│   ├── mode_args.py        # --item / --library / QUERY helpers
+│   ├── detail_output.py     # shared item/library detail renderers
 │   ├── resolve.py          # title lines, pick_best, choice tables
-│   ├── download_ops.py     # download loop, skip, library matching
 │   ├── collection_ops.py   # collection/member resolution + CSV validation
 │   ├── download_ops.py     # library name/id matching helpers
 │   ├── library_ops.py      # library view resolution, type filters, and download
@@ -97,7 +96,6 @@ The CLI reads **`os.environ` only** (it does not auto-load `.env`; export vars o
 | `EMBY_API_KEY` | API key (alternative to username/password) |
 | `EMBY_USERNAME` / `EMBY_PASSWORD` | Name-based auth |
 | `EMBY_OUTPUT` | Download destination (default `./downloads`) |
-| `EMBY_ITEM_ID` | Default `--id` for `download --item` / `play` |
 | `EMBY_METHOD` | `download` \| `stream` \| `hls` |
 | `EMBY_PATH_STRIP` | With `--mirror-path`, strip this server path prefix before mirroring (e.g. `/mnt/media`) |
 | `EMBY_PLAYER` | External player command for `play` |
@@ -127,11 +125,11 @@ cli.main
 | Session store on disk | `auth_cache.py` |
 | Metadata cache on disk | `data_cache.py` |
 | Resolving server/user/password from flags/env/TTY/cache | `credentials.py` |
-| `--item` / `--library` / embedded QUERY | `mode_args.py` + command modules |
+| Item/library selectors and validation | `commands/item.py`, `commands/library.py`, `item_ops.py`, `library_ops.py` |
 | Title-line resolution (`Movie (2010)`, `Show S01E02`) | `resolve.py` |
 | Download orchestration, skip, library match | `item_ops.py` (items), `library_ops.py` (libraries), `collection_ops.py` (collections) |
 | Playback orchestration | `item_ops.py` (`play_items`, …), `library_ops.play_library`, `collection_ops.play_collection` |
-| Library name/id matching (legacy search/show) | `download_ops.py` |
+| Library name/id matching and choice rows | `download_ops.py` |
 | Collection/member resolution and CSV policy | `collection_ops.py` |
 | Library view resolution and type filters | `library_ops.py` |
 | Media item resolution, listing, and playback | `item_ops.py` |
@@ -170,8 +168,8 @@ calls these primitives (usually indirectly via a service), never `requests` dire
 | Delete one item | `client.items.delete(item_id)` | ad-hoc `_delete` from commands |
 
 New code must use **v2 cache keys** inside `ItemsService` (`v2:item:…`, `v2:items:…`).
-Legacy `get_item_info` / `get_items` remain for `search`, `show`, `download`, and
-`play` until a scoped migration moves them to thin wrappers over `client.items`.
+`get_item_info` / `get_items` remain for some canonical item/library operations
+until a scoped migration moves them to thin wrappers over `client.items`.
 When migrating, preserve defaults (e.g. `Fields=ITEM_FIELDS`) and stdout behavior.
 
 **Entity-specific endpoints (add a service when the REST surface is distinct):**
@@ -253,7 +251,7 @@ on `client.items`; add `api/people.py` only if person lookup/creation needs
 - `config` — `current-server`, `get-servers`, `use-server`, `view` (tokens redacted).
 - Other commands: no `--server` → active context; cache hit → reuse token; miss + credentials → transparent login; **HTTP 401** with password available → invalidate cache and re-authenticate **once per top-level request** (no infinite reauth loop).
 - If 401 cannot be recovered (no password, or re-login rejected): raise `AuthenticationError`, clear the stale cache entry, and let `main` print a short stderr message (no traceback).
-- Invalid selectors for `search` / `download` / `play` / `show` / `collection` are rejected **before** opening a client.
+- Invalid selectors for `item` / `library` / `collection` are rejected **before** opening a client.
 
 ### Intentional duplicate validation
 
@@ -264,21 +262,6 @@ on `client.items`; add `api/people.py` only if person lookup/creation needs
 ## CLI contracts (do not break casually)
 
 Observable behavior for users and scripts: flags, stdout/stderr split, exit codes, and message prefixes. Prefer CHANGELOG entries when any of these change.
-
-### Modes `--item` / `--library`
-
-Shared pattern (`mode_args.py`) for **`search`** and **`download`**:
-
-| Flag | Behavior |
-|------|----------|
-| `--item [QUERY]` | Media mode; QUERY optional on the same flag. Alias: `--media-item` |
-| `--library [QUERY]` | Library mode; QUERY optional on the same flag |
-| `--id` | Emby ID (alternative to QUERY; CSV allowed where documented) |
-| `--search` | Alternative QUERY (do not combine with QUERY embedded in `--item`/`--library`) |
-
-`nargs='?'` + `const=""` so `--item --count all` / `--library --id X` do not swallow the next flag as QUERY.
-
-`show` is different: `--item`/`--library` plus **mandatory `--id`** (no QUERY / `--search`).
 
 ### Collections
 
@@ -323,8 +306,7 @@ Shared pattern (`mode_args.py`) for **`search`** and **`download`**:
 ### Libraries
 
 Read-only entity commands (`library list`, `library search`, `library show`) plus
-`library download` and `library play`. Legacy `search --library`, `show --library`, and
-`download --library` are deprecated wrappers (stderr warning).
+`library download` and `library play`.
 
 - `library list` lists every library view (alias of `library search --count all`).
   Supports `--type`, `--order-by` (`name`, `id`, `items`), `--desc`, and `--no-cache`.
@@ -332,7 +314,7 @@ Read-only entity commands (`library list`, `library search`, `library show`) plu
   use `--count all` for the full catalog (same output as `list` without QUERY).
 - `library show` selects a library with one positional QUERY or `--id` (exact/unique
   prefix), never both. Parent `--id` may appear before the subcommand. Reuses
-  `commands/show._print_library` for detail output.
+  `detail_output.print_library` for detail output.
 - `--type` accepts aliases such as `movies`, `tv`/`tvshows`, `music`, `photos`, etc.
 - `library download` resolves one library by QUERY or `--id`, lists its downloadable
   items, and downloads each via `item_ops.download_items`. Supports `--output`,
@@ -350,9 +332,7 @@ Read-only entity commands (`library list`, `library search`, `library show`) plu
 ### Media items
 
 Read-only entity commands (`item list`, `item search`, `item show`, `item play`) plus
-`item download` for playable media (`Movie`, `Episode`, `Audio`, `Video`). Legacy
-`search --item`, `show --item`, `download --item`, and `play --item` are deprecated
-wrappers (stderr warning).
+`item download` for playable media (`Movie`, `Episode`, `Audio`, `Video`).
 
 - `item list` lists every matching item (alias of `item search --count all`).
   Uses `item_ops.build_item_listing_query()` + `fetch_item_listing()` →
@@ -360,24 +340,23 @@ wrappers (stderr warning).
 - `item search [QUERY]` supports `--type`, `--year`, `--order-by`
   (`year`, `name`, `id`, `release-date`, `added-date`, `resolution`, `size`), `--desc`,
   `--no-cache`, and `--parse-query` (title-line syntax: `Movie (1999)`, `Show S01E01`).
-  Default QUERY mode is strict Emby `SearchTerm`. Filters, sort, and pagination are
-  delegated to Emby (`SearchTerm`, `IncludeItemTypes`, `Years`, `SortBy`/`SortOrder`,
-  `Limit`). Episode tables include a `Series` column when applicable.
+  Default QUERY mode uses an Emby recall search followed by strict display-name
+  filtering. Filters and supported sorts are delegated where possible; strict
+  filtering and its final limit are applied locally. Episode tables include a
+  `Series` column when applicable.
 - `item show` resolves one item by QUERY or `--id` (exact/unique prefix). Parent
   `--id` may appear before the subcommand. Supports `--parse-query` like search.
-  Reuses `commands/show._print_media_item`.
+  Reuses `detail_output.print_media_item`.
 - `item play` resolves one item by QUERY or `--id` and opens a DirectStream URL via
   `item_ops` playback helpers (`find_player`, `play_one_item`, `play_item_ids`).
   Supports `--player`, `--wait`, `--pick-best-item`, `--no-cache`, `--no-parse-query`,
   and comma-separated `--id`. Parent `--id` may appear before the subcommand.
-  QUERY defaults to title-line resolution (`resolve_title_items`, same as legacy
-  `play --item`). Legacy top-level `play` is a deprecated wrapper.
+  QUERY defaults to title-line resolution (`resolve_title_items`).
 - `item download` resolves one item by QUERY or `--id` (CSV supported) and downloads
   via `item_ops` (`download_items`, `download_item_ids`, `download_from_file`).
   Supports `--output`, `--method`, `--force`, `--throttle`, `--pick-best-item`,
   `--dry-run`, `--from-file`, `--no-parse-query`, and optional `--mirror-path`.
   QUERY / `--from-file` default to title-line resolution (`resolve_title_items`).
-  Legacy top-level `download --item` / `download --from-file` are deprecated wrappers.
 - No `create`, `rename`, or `delete` for items in this phase.
 
 ### Output streams
@@ -393,7 +372,7 @@ wrappers (stderr warning).
 
 Any user-facing list/table of items or libraries: sort by **Id descending**, then **Name** alphabetically (case-insensitive). Use `resolve.sort_for_display`.
 
-### Title resolution (`play` / `download --item` / `--from-file`)
+### Title resolution (`item play` / `item download` / `--from-file`)
 
 Strict by default: year with no match, multiple series, or multiple versions → fail with a table + hint.
 
@@ -519,9 +498,9 @@ Maintainers with a local wrapper Makefile may use an equivalent `make release VE
 | Generic item/collection endpoints | `api/items.py`, `api/collections.py` |
 | New entity service or metadata merge helper | `api/items.py` first; `api/<entity>.py` only for distinct REST routes; see **Entity services** above |
 | Collection matching/member policy | `collection_ops.py`, `commands/collection.py` |
-| Item/library QUERY modes | `mode_args.py`, `cli.py`, `commands/{search,show,download,play}.py` |
+| Item/library selectors | `cli.py`, `commands/item.py`, `commands/library.py`, `item_ops.py`, `library_ops.py` |
 | New subcommand or flag | `cli.py`, `commands/…`, `help.COMMAND_SUMMARIES` |
-| `show` detail / library recents | `commands/show.py`, `constants.SHOW_*` |
+| Item/library detail and recents | `detail_output.py`, `constants.SHOW_*` |
 | Title disambiguation / pick-best | `resolve.py` |
 | Skip / dry-run / bulk download loops | `item_ops.py`, `library_ops.download_library`, `collection_ops.download_collection` |
 | Message text / exit codes | `output.py` |

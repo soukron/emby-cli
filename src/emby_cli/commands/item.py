@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 
 from emby_cli.client import EmbyClient
-from emby_cli.commands.show import _print_media_item
 from emby_cli.constants import SEARCH_COUNT_DEFAULT
+from emby_cli.detail_output import print_media_item
 from emby_cli.item_ops import (
     ITEM_TYPE_ALIASES,
     DownloadOpts,
@@ -340,7 +340,7 @@ def _cmd_show(client: EmbyClient, args: argparse.Namespace) -> None:
         use_cache=True,
         parse_query=getattr(args, "parse_query", False) is True,
     )
-    _print_media_item(item)
+    print_media_item(item)
 
 
 def cmd_item(client: EmbyClient, args: argparse.Namespace) -> None:

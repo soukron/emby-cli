@@ -695,7 +695,7 @@ class EmbyClient:
 
         *limit* caps how many items to return. ``None`` fetches all pages
         (Emby ``TotalRecordCount``). Internal callers (resolve) keep the
-        default of 25; the CLI ``search --count`` overrides this.
+        default of 25; the CLI ``item search --count`` overrides this.
         """
         items, _total = self.search_items_result(
             query, item_types=item_types, limit=limit,

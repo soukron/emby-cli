@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -129,16 +129,50 @@ def test_item_list_shows_all_without_count_cap(capsys):
     )
 
 
-def test_item_show_delegates_to_print_media_item():
+def test_item_show_prints_full_detail(capsys):
     client = _client()
-    item = {"Id": "100", "Name": "The Matrix", "Type": "Movie", "ProductionYear": 1999}
-    with (
-        patch("emby_cli.commands.item.resolve_item", return_value=item) as resolve,
-        patch("emby_cli.commands.item._print_media_item") as print_item,
-    ):
+    item = {
+        "Id": "100",
+        "Name": "The Matrix",
+        "Type": "Movie",
+        "ProductionYear": 1999,
+        "DateCreated": "2024-01-15T10:00:00.0000000Z",
+        "Path": "/movies/Matrix.mkv",
+        "RunTimeTicks": 8_100_000_000_000,
+        "MediaSources": [{"Size": 1024, "Container": "mkv"}],
+        "Overview": "A hacker discovers reality.",
+        "Genres": ["Action", "Sci-Fi"],
+        "CommunityRating": 8.7,
+    }
+    with patch("emby_cli.commands.item.resolve_item", return_value=item):
         cmd_item(client, _args("show", "Matrix"))
-    resolve.assert_called_once()
-    print_item.assert_called_once_with(item)
+    out = capsys.readouterr().out
+    assert "id: 100" in out
+    assert "name: The Matrix" in out
+    assert "year: 1999" in out
+    assert "added: 2024-01-15 10:00:00" in out
+    assert "genres: Action, Sci-Fi" in out
+    assert "A hacker discovers reality." in out
+
+
+def test_item_show_omits_empty_media_section(capsys):
+    client = _client()
+    item = {
+        "Id": "s1",
+        "Name": "Some Series",
+        "Type": "Series",
+        "ProductionYear": 2020,
+        "ChildCount": 5,
+        "Overview": "A show about things.",
+    }
+    with patch("emby_cli.commands.item.resolve_item", return_value=item):
+        cmd_item(client, _args("show", "Some Series"))
+    out = capsys.readouterr().out
+    assert "type: Series" in out
+    assert "Media" not in out
+    assert "resolution:" not in out
+    assert "size:" not in out
+    assert "runtime:" not in out
 
 
 def test_item_play_launches_player_for_query():
@@ -166,14 +200,48 @@ def test_item_play_launches_player_for_title_line():
     play_one.assert_called_once_with(client, item, ["vlc"], wait=False)
 
 
-def test_item_play_csv_ids_launches_each():
+def test_item_play_csv_ids_launches_each(capsys):
     client = _client()
-    with (
-        patch("emby_cli.commands.item.find_player", return_value=["vlc"]),
-        patch("emby_cli.commands.item.play_item_ids", return_value=0) as play_ids,
-    ):
+    items = [
+        {"Id": "1", "Name": "A", "Type": "Movie", "ProductionYear": 2001},
+        {"Id": "2", "Name": "B", "Type": "Movie", "ProductionYear": 2002},
+    ]
+    with patch("emby_cli.commands.item.find_player", return_value=["vlc"]), patch.object(
+        client,
+        "get_item_info",
+        side_effect=items,
+    ), patch.object(
+        client,
+        "resolve_direct_stream_url",
+        side_effect=["http://u/1", "http://u/2"],
+    ), patch("emby_cli.item_ops.play_url", return_value=0) as play_url:
         cmd_item(client, _args("play", "--id", "1,2"))
-    play_ids.assert_called_once()
+    assert [call.args[1] for call in play_url.call_args_list] == ["http://u/1", "http://u/2"]
+    out = capsys.readouterr().out
+    assert "[1/2] Playing: A" in out
+    assert "[2/2] Playing: B" in out
+
+
+def test_item_play_csv_continues_after_fetch_error(capsys):
+    client = MagicMock()
+
+    def get_info(item_id):
+        if item_id == "bad":
+            raise RuntimeError("gone")
+        return {"Id": item_id, "Name": "Ok", "Type": "Movie", "ProductionYear": 2000}
+
+    client.get_item_info.side_effect = get_info
+    client.resolve_direct_stream_url.return_value = "http://u/ok"
+    with patch("emby_cli.commands.item.find_player", return_value=["vlc"]), patch(
+        "emby_cli.item_ops.play_url",
+        return_value=0,
+    ) as play_url, pytest.raises(SystemExit) as exc:
+        cmd_item(client, _args("play", "--id", "bad,ok"))
+    assert exc.value.code == 1
+    assert play_url.call_count == 1
+    captured = capsys.readouterr()
+    assert "fetching item bad" in captured.err
+    assert "Playing: Ok" in captured.out
 
 
 def test_item_download_delegates_to_item_ops():
@@ -213,3 +281,118 @@ def test_item_search_filters_by_type(capsys):
         when_unsorted="catalog",
         use_cache=True,
     )
+
+
+def test_item_search_count_all_is_distinct_from_list(capsys):
+    client = _client()
+    item = {"Id": "1", "Name": "The Matrix", "Type": "Movie", "ProductionYear": 1999}
+    with patch.object(client.items, "list_items", return_value=([item], 1)) as list_items:
+        cmd_item(client, _args("search", "Matrix", "--count", "all"))
+    assert "Total: 1" in capsys.readouterr().out
+    assert list_items.call_args.kwargs["query"] == "Matrix"
+    assert list_items.call_args.kwargs["limit"] is None
+
+
+def test_item_search_no_cache_sets_client_flag(capsys):
+    client = _client()
+    with patch.object(client.items, "list_items", return_value=([], 0)):
+        cmd_item(client, _args("search", "Matrix", "--no-cache"))
+    assert client.no_data_cache is True
+    assert "No results." in capsys.readouterr().out
+
+
+def test_item_search_filters_by_type_and_year(capsys):
+    client = _client()
+    item = {"Id": "1", "Name": "Spider-Man", "Type": "Movie", "ProductionYear": 2026}
+    with patch.object(client.items, "list_items", return_value=([item], 1)) as list_items:
+        cmd_item(client, _args("search", "spider-man", "--type", "movie", "--year", "2026"))
+    assert "Spider-Man" in capsys.readouterr().out
+    list_items.assert_called_once_with(
+        query="spider-man",
+        parent_id=None,
+        item_types="Movie",
+        year=2026,
+        limit=None,
+        sort_by=None,
+        desc=False,
+        when_unsorted="catalog",
+        use_cache=True,
+    )
+
+
+def test_item_search_sorts_by_size_desc(capsys):
+    client = _client()
+    items = [
+        {"Id": "1", "Name": "Title X A", "Type": "Movie", "MediaSources": [{"Size": 1000}]},
+        {"Id": "2", "Name": "Title X B", "Type": "Movie", "MediaSources": [{"Size": 3000}]},
+        {"Id": "3", "Name": "Title X C", "Type": "Movie", "MediaSources": [{"Size": 2000}]},
+    ]
+    with patch.object(client.items, "list_items", return_value=(items, 3)):
+        cmd_item(client, _args("search", "Title X", "--order-by", "size", "--desc"))
+    out = capsys.readouterr().out
+    assert out.index("Title X B") < out.index("Title X C") < out.index("Title X A")
+
+
+def test_item_search_sorts_by_resolution_desc(capsys):
+    client = _client()
+    items = [
+        {
+            "Id": "1",
+            "Name": "Title X A",
+            "Type": "Movie",
+            "MediaStreams": [{"Type": "Video", "Width": 1280}],
+        },
+        {
+            "Id": "2",
+            "Name": "Title X B",
+            "Type": "Movie",
+            "MediaStreams": [{"Type": "Video", "Width": 3840}],
+        },
+        {
+            "Id": "3",
+            "Name": "Title X C",
+            "Type": "Movie",
+            "MediaStreams": [{"Type": "Video", "Width": 1920}],
+        },
+    ]
+    with patch.object(client.items, "list_items", return_value=(items, 3)):
+        cmd_item(client, _args("search", "Title X", "--order-by", "resolution", "--desc"))
+    out = capsys.readouterr().out
+    assert out.index("Title X B") < out.index("Title X C") < out.index("Title X A")
+
+
+def test_item_search_uses_disk_cache_between_calls(capsys, tmp_path, monkeypatch):
+    monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
+    client = _client()
+    client.use_data_cache = True
+    item = {"Id": "1", "Name": "The Matrix", "Type": "Movie", "ProductionYear": 1999}
+    args = _args("search", "Matrix")
+    with patch.object(client, "_paginate", return_value=([item], 1)) as paginate:
+        cmd_item(client, args)
+        capsys.readouterr()
+        cmd_item(client, args)
+        capsys.readouterr()
+    assert paginate.call_count == 1
+
+
+def test_item_search_no_cache_refreshes_between_calls(capsys, tmp_path, monkeypatch):
+    monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
+    client = _client()
+    client.use_data_cache = True
+    items = [
+        {"Id": "1", "Name": "The Matrix", "Type": "Movie", "ProductionYear": 2020},
+        {"Id": "2", "Name": "Matrix Reloaded", "Type": "Movie", "ProductionYear": 2021},
+    ]
+    args = _args("search", "Matrix", "--no-cache")
+    with patch.object(
+        client,
+        "_paginate",
+        side_effect=[([items[0]], 1), ([items[1]], 1)],
+    ) as paginate:
+        cmd_item(client, args)
+        first = capsys.readouterr().out
+        cmd_item(client, args)
+        second = capsys.readouterr().out
+    assert "The Matrix" in first
+    assert "Matrix Reloaded" in second
+    assert paginate.call_count == 2

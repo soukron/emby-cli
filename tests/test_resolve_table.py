@@ -64,6 +64,16 @@ def test_print_item_choices_media(capsys):
     assert "Movie" in out
 
 
+def test_print_item_choices_leading_blank_is_explicit(capsys):
+    item = {"Id": "1", "Name": "Film", "Type": "Movie"}
+    print_item_choices([item], leading_blank=False)
+    without_blank = capsys.readouterr().out
+    print_item_choices([item], leading_blank=True)
+    with_blank = capsys.readouterr().out
+    assert not without_blank.startswith("\n")
+    assert with_blank.startswith("\n")
+
+
 def test_print_item_choices_shows_series_for_episodes(capsys):
     print_item_choices([
         {

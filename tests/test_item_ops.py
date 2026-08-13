@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -19,6 +20,8 @@ from emby_cli.item_ops import (
     item_types_for_api,
     matches_strict_name_query,
     normalize_item_type,
+    play_items,
+    play_url,
     playable_items_for_parent,
     resolve_item,
     split_listing_search_query,
@@ -34,6 +37,30 @@ def _client() -> EmbyClient:
     client = EmbyClient("http://host:8096", api_key="k")
     client.user_id = "uid"
     return client
+
+
+def test_play_items_launches_each(capsys):
+    client = MagicMock()
+    items = [
+        {"Id": "1", "Name": "A", "Type": "Movie", "ProductionYear": 2001},
+        {"Id": "2", "Name": "B", "Type": "Episode", "ProductionYear": 2002},
+    ]
+    client.resolve_direct_stream_url.side_effect = ["http://u/1", "http://u/2"]
+    with patch("emby_cli.item_ops.play_url", return_value=0) as launch:
+        rc = play_items(client, items, ["vlc"], wait=False, show_progress=True)
+    assert rc == 0
+    assert launch.call_count == 2
+    out = capsys.readouterr().out
+    assert "[1/2] Playing: A" in out
+    assert "[2/2] Playing: B" in out
+
+
+def test_play_url_wait_suppresses_player_output():
+    with patch("emby_cli.item_ops.subprocess.run", return_value=MagicMock(returncode=0)) as run:
+        assert play_url(["vlc"], "http://u/1", wait=True) == 0
+    assert run.call_args.kwargs["stdin"] is subprocess.DEVNULL
+    assert run.call_args.kwargs["stdout"] is subprocess.DEVNULL
+    assert run.call_args.kwargs["stderr"] is subprocess.DEVNULL
 
 
 def _not_found() -> requests.HTTPError:

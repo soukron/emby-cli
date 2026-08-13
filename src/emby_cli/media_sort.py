@@ -2,6 +2,23 @@
 
 from __future__ import annotations
 
+from emby_cli.util import item_remote_size
+
+
+def _video_width(row: dict) -> int | None:
+    width = row.get("Width")
+    if width:
+        return width
+    for stream in row.get("MediaStreams") or []:
+        if stream.get("Type") == "Video" and stream.get("Width"):
+            return stream["Width"]
+    sources = row.get("MediaSources") or []
+    if sources:
+        for stream in sources[0].get("MediaStreams") or []:
+            if stream.get("Type") == "Video" and stream.get("Width"):
+                return stream["Width"]
+    return None
+
 
 def sort_key_id(row: dict) -> tuple[int, int, str]:
     item_id = str(row.get("Id") or "")
@@ -56,4 +73,20 @@ def sort_media_items(items: list[dict], order_by: str, *, desc: bool) -> list[di
             reverse=desc,
         )
         return with_date + without_date
+    if order_by == "size":
+        with_size = [row for row in items if item_remote_size(row) is not None]
+        without_size = [row for row in items if item_remote_size(row) is None]
+        with_size.sort(
+            key=lambda row: (item_remote_size(row) or 0, sort_key_id(row)),
+            reverse=desc,
+        )
+        return with_size + without_size
+    if order_by == "resolution":
+        with_res = [row for row in items if _video_width(row) is not None]
+        without_res = [row for row in items if _video_width(row) is None]
+        with_res.sort(
+            key=lambda row: (_video_width(row) or 0, sort_key_id(row)),
+            reverse=desc,
+        )
+        return with_res + without_res
     return items
