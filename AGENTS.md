@@ -46,7 +46,7 @@ CLI to **search**, **inspect** (`show`), **play**, **download/backup** original 
 │   ├── download_ops.py     # download loop, skip, library matching
 │   ├── collection_ops.py   # collection/member resolution + CSV validation
 │   ├── library_ops.py      # library view resolution + type filters
-│   ├── item_ops.py         # media item resolution + type/year filters
+│   ├── item_ops.py         # media item resolution, listing, and playback
 │   ├── output.py           # stdout/stderr messages + Stats / exit codes
 │   ├── util.py             # paths, sizes, skip, ffmpeg remux
 │   ├── constants.py        # retries, types, field lists, CLIENT_NAME
@@ -130,7 +130,7 @@ cli.main
 | Download orchestration, skip, library match | `download_ops.py` |
 | Collection/member resolution and CSV policy | `collection_ops.py` |
 | Library view resolution and type filters | `library_ops.py` |
-| Media item resolution and type/year filters | `item_ops.py` |
+| Media item resolution, listing, and playback | `item_ops.py` |
 | User-visible messages and exit codes | `output.py` |
 | New flag or subcommand | `cli.py` + `commands/…` + `help.COMMAND_SUMMARIES` |
 
@@ -332,10 +332,11 @@ later migration.
   `SortBy`/`SortOrder`, `Limit`).
 - `item show` resolves one item by QUERY or `--id` (exact/unique prefix). Parent
   `--id` may appear before the subcommand. Reuses `commands/show._print_media_item`.
-- `item play` resolves one item by QUERY or `--id` and opens a DirectStream URL in
-  an external player (`--player`, `--wait`, `--pick-best-item`, `--no-cache`).
-  Comma-separated `--id` plays each item in order. Parent `--id` may appear before
-  the subcommand.
+- `item play` resolves one item by QUERY or `--id` and opens a DirectStream URL via
+  `item_ops` playback helpers (`find_player`, `play_one_item`, `play_item_ids`).
+  Supports `--player`, `--wait`, `--pick-best-item`, `--no-cache`, and
+  comma-separated `--id`. Parent `--id` may appear before the subcommand.
+  Legacy top-level `play` remains a thin wrapper until deprecation.
 - No `create`, `rename`, or `delete` for items in this phase.
 
 ### Output streams

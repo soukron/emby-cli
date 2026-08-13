@@ -1,13 +1,21 @@
-"""Resolution and listing helpers for playable media items."""
+"""Resolution, listing, and playback helpers for playable media items."""
 
 from __future__ import annotations
 
+import os
+import shlex
+import shutil
+import subprocess
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 import requests
 
 from emby_cli.client import EmbyClient
 from emby_cli.constants import SEARCH_ITEM_TYPES, SHOW_ITEM_FIELDS
+from emby_cli.output import print_error
+from emby_cli.resolve import classify_resolution, item_video_width
 
 ITEM_TYPE_ALIASES: dict[str, str] = {
     "movie": "Movie",
@@ -168,3 +176,132 @@ def resolve_item(
         f"item {selector} is ambiguous; use --id",
         matches,
     )
+
+
+_MAC_PLAYER_BINS = (
+    "/Applications/VLC.app/Contents/MacOS/VLC",
+    "/Applications/IINA.app/Contents/MacOS/IINA",
+    "/Applications/mpv.app/Contents/MacOS/mpv",
+)
+
+
+def find_player(explicit: str | None = None) -> list[str]:
+    """Resolve an external player command argv, or raise RuntimeError."""
+    if explicit:
+        cmd = shlex.split(explicit)
+        if not cmd:
+            raise RuntimeError("Empty --player / EMBY_PLAYER value")
+        binary = cmd[0]
+        if os.path.sep in binary or binary.startswith("."):
+            if not Path(binary).is_file():
+                raise RuntimeError(f"Player not found: {binary}")
+        elif shutil.which(binary) is None:
+            raise RuntimeError(
+                f"Player '{binary}' not found in PATH. "
+                "Pass a full path via --player or EMBY_PLAYER."
+            )
+        return cmd
+
+    for name in ("vlc", "mpv", "iina"):
+        found = shutil.which(name)
+        if found:
+            return [found]
+
+    if sys.platform == "darwin":
+        for path in _MAC_PLAYER_BINS:
+            if Path(path).is_file():
+                return [path]
+
+    raise RuntimeError(
+        "No external player found (tried vlc, mpv, iina). "
+        "Install one or set --player / EMBY_PLAYER to its path, e.g.\n"
+        "  --player /Applications/VLC.app/Contents/MacOS/VLC"
+    )
+
+
+def play_url(player_cmd: list[str], url: str, *, wait: bool = False) -> int:
+    """Launch *player_cmd* with *url*.
+
+    By default detaches so closing the player window (common on macOS) does not
+    leave this process blocked. Pass wait=True to block until the player exits.
+    """
+    if wait:
+        return subprocess.run([*player_cmd, url], check=False).returncode
+
+    subprocess.Popen(
+        [*player_cmd, url],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    return 0
+
+
+def play_one_item(
+    client: EmbyClient,
+    item: dict,
+    player_cmd: list[str],
+    *,
+    wait: bool,
+    idx: int | None = None,
+    total: int | None = None,
+) -> int:
+    """Play one resolved item. Return player exit code (0 on detach success)."""
+    item_id = item["Id"]
+    res = classify_resolution(item_video_width(item))
+    year = item.get("ProductionYear", "?")
+    prefix = f"[{idx}/{total}] " if idx is not None and total is not None else ""
+    print()
+    print(f"{prefix}Playing: {item.get('Name')} ({year}) [{item.get('Type')}, {res}]")
+    try:
+        url = client.resolve_direct_stream_url(item_id)
+    except (requests.RequestException, RuntimeError) as exc:
+        print_error(f"resolving stream URL: {exc}", idx=idx, total=total)
+        return 1
+
+    return play_url(player_cmd, url, wait=wait)
+
+
+def play_item_ids(
+    client: EmbyClient,
+    item_id: str,
+    player_cmd: list[str],
+    *,
+    raw_type: str | None = None,
+    wait: bool = False,
+) -> int:
+    """Play comma-separated item IDs. Return process exit code."""
+    item_ids = [part.strip() for part in item_id.split(",") if part.strip()]
+    total = len(item_ids)
+    errors = 0
+    last_rc = 0
+    for idx, iid in enumerate(item_ids, 1):
+        try:
+            item = client.get_item_info(iid)
+        except (requests.RequestException, RuntimeError) as exc:
+            print_error(f"fetching item {iid}: {exc}", idx=idx, total=total)
+            errors += 1
+            continue
+        if not item_matches_type(item, raw_type):
+            print_error(
+                f"item id '{iid}' not found",
+                idx=idx if total > 1 else None,
+                total=total if total > 1 else None,
+            )
+            errors += 1
+            continue
+        rc = play_one_item(
+            client,
+            item,
+            player_cmd,
+            wait=wait,
+            idx=idx if total > 1 else None,
+            total=total if total > 1 else None,
+        )
+        if rc != 0:
+            errors += 1
+            last_rc = rc
+    if errors:
+        return last_rc if last_rc else 1
+    return 0

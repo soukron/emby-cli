@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-import requests
-
 from emby_cli.client import EmbyClient
-from emby_cli.commands.play import _play_one, find_player
 from emby_cli.commands.show import _print_media_item
 from emby_cli.constants import SEARCH_COUNT_DEFAULT
 from emby_cli.item_ops import (
@@ -15,9 +12,11 @@ from emby_cli.item_ops import (
     ItemResolutionError,
     build_item_listing_query,
     fetch_item_listing,
-    item_matches_type,
+    find_player,
     item_selector_id,
     normalize_item_type,
+    play_item_ids,
+    play_one_item,
     resolve_item,
 )
 from emby_cli.output import print_error
@@ -124,49 +123,6 @@ def _resolve_from_args(
         raise SystemExit(1) from None
 
 
-def _play_by_id(
-    client: EmbyClient,
-    args: argparse.Namespace,
-    *,
-    item_id: str,
-    player_cmd: list[str],
-    wait: bool,
-) -> None:
-    item_ids = [part.strip() for part in item_id.split(",") if part.strip()]
-    total = len(item_ids)
-    errors = 0
-    last_rc = 0
-    for idx, iid in enumerate(item_ids, 1):
-        try:
-            item = client.get_item_info(iid)
-        except (requests.RequestException, RuntimeError) as exc:
-            print_error(f"fetching item {iid}: {exc}", idx=idx, total=total)
-            errors += 1
-            continue
-        raw_type = _text(args, "item_type")
-        if raw_type and not item_matches_type(item, raw_type):
-            print_error(
-                f"item id '{iid}' not found",
-                idx=idx if total > 1 else None,
-                total=total if total > 1 else None,
-            )
-            errors += 1
-            continue
-        rc = _play_one(
-            client,
-            item,
-            player_cmd,
-            wait=wait,
-            idx=idx if total > 1 else None,
-            total=total if total > 1 else None,
-        )
-        if rc != 0:
-            errors += 1
-            last_rc = rc
-    if errors:
-        raise SystemExit(last_rc if last_rc else 1)
-
-
 def _cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
     wait = getattr(args, "wait", False) is True
     pick_best = getattr(args, "pick_best_item", False) is True
@@ -178,11 +134,19 @@ def _cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
 
     item_id = item_selector_id(args)
     if item_id:
-        _play_by_id(client, args, item_id=item_id, player_cmd=player_cmd, wait=wait)
+        rc = play_item_ids(
+            client,
+            item_id,
+            player_cmd,
+            raw_type=_text(args, "item_type"),
+            wait=wait,
+        )
+        if rc != 0:
+            raise SystemExit(rc)
         return
 
     item = _resolve_from_args(client, args, use_cache=True, pick_best=pick_best)
-    rc = _play_one(client, item, player_cmd, wait=wait)
+    rc = play_one_item(client, item, player_cmd, wait=wait)
     if rc != 0:
         raise SystemExit(rc)
 

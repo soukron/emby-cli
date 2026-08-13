@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from emby_cli import item_ops
 from emby_cli.commands import play as play_mod
 
 
@@ -26,7 +27,7 @@ def test_play_csv_ids_launches_each(capsys):
         wait=False,
     )
     with patch.object(play_mod, "find_player", return_value=["vlc"]):
-        with patch.object(play_mod, "play_url", return_value=0) as play_url:
+        with patch.object(item_ops, "play_url", return_value=0) as play_url:
             play_mod.cmd_play(client, args)
     assert play_url.call_count == 2
     assert play_url.call_args_list[0].args[1] == "http://u/1"
@@ -55,7 +56,7 @@ def test_play_csv_continues_after_fetch_error(capsys):
         wait=False,
     )
     with patch.object(play_mod, "find_player", return_value=["vlc"]):
-        with patch.object(play_mod, "play_url", return_value=0) as play_url:
+        with patch.object(item_ops, "play_url", return_value=0) as play_url:
             with pytest.raises(SystemExit) as exc:
                 play_mod.cmd_play(client, args)
     assert exc.value.code == 1

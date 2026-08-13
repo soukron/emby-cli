@@ -84,7 +84,7 @@ def test_item_play_launches_player_for_query():
     with (
         patch("emby_cli.commands.item.resolve_item", return_value=item),
         patch("emby_cli.commands.item.find_player", return_value=["vlc"]),
-        patch("emby_cli.commands.item._play_one", return_value=0) as play_one,
+        patch("emby_cli.commands.item.play_one_item", return_value=0) as play_one,
     ):
         cmd_item(client, _args("play", "Matrix", "--player", "vlc"))
     play_one.assert_called_once_with(client, item, ["vlc"], wait=False)
@@ -92,17 +92,12 @@ def test_item_play_launches_player_for_query():
 
 def test_item_play_csv_ids_launches_each():
     client = _client()
-    items = [
-        {"Id": "1", "Name": "One", "Type": "Movie", "ProductionYear": 2000},
-        {"Id": "2", "Name": "Two", "Type": "Movie", "ProductionYear": 2001},
-    ]
     with (
-        patch.object(client, "get_item_info", side_effect=items),
         patch("emby_cli.commands.item.find_player", return_value=["vlc"]),
-        patch("emby_cli.commands.item._play_one", return_value=0) as play_one,
+        patch("emby_cli.commands.item.play_item_ids", return_value=0) as play_ids,
     ):
         cmd_item(client, _args("play", "--id", "1,2"))
-    assert play_one.call_count == 2
+    play_ids.assert_called_once()
 
 
 def test_item_search_filters_by_type(capsys):
