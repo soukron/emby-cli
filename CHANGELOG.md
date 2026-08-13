@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.0
+
 Added:
 
 - `collection search` and `collection show` for paginated `BoxSet` discovery,
