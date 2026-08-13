@@ -319,7 +319,7 @@ unchanged until a later migration.
 
 ### Media items
 
-Read-only entity commands (`item list`, `item search`, `item show`) for playable
+Read-only entity commands (`item list`, `item search`, `item show`, `item play`) for playable
 media (`Movie`, `Episode`, `Audio`, `Video`). Legacy `search --item`,
 `show --item`, `download --item`, and `play --item` remain unchanged until a
 later migration.
@@ -327,9 +327,15 @@ later migration.
 - `item list` lists every matching item (alias of `item search --count all`).
   Uses Emby ``SearchTerm`` via `ItemsService.search()` with v2 cache keys.
 - `item search [QUERY]` supports `--type`, `--year`, `--order-by`
-  (`year`, `name`, `id`, `size`, `resolution`), `--desc`, and `--no-cache`.
+  (`year`, `name`, `id`), `--desc`, and `--no-cache`. Filters, sort, and
+  pagination are delegated to Emby (`SearchTerm`, `IncludeItemTypes`, `Years`,
+  `SortBy`/`SortOrder`, `Limit`).
 - `item show` resolves one item by QUERY or `--id` (exact/unique prefix). Parent
   `--id` may appear before the subcommand. Reuses `commands/show._print_media_item`.
+- `item play` resolves one item by QUERY or `--id` and opens a DirectStream URL in
+  an external player (`--player`, `--wait`, `--pick-best-item`, `--no-cache`).
+  Comma-separated `--id` plays each item in order. Parent `--id` may appear before
+  the subcommand.
 - No `create`, `rename`, or `delete` for items in this phase.
 
 ### Output streams
@@ -364,7 +370,7 @@ Identity headers / User-Agent: `emby-cli/<version>` (`constants.CLIENT_NAME`). `
 ### Data cache isolation
 
 - Read-only commands (`search`, `show`, `play`, `info`, collection list/search/show,
-  library list/search/show, item list/search/show) can use disk cache for metadata.
+  library list/search/show, item list/search/show/play) can use disk cache for metadata.
 - `download` must bypass data cache.
 - Collection mutations resolve uncached and invalidate catalog/detail/member keys immediately.
 - Cache keys must include **server URL + resolved user ID** (and endpoint params) so

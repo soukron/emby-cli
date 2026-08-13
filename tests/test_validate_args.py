@@ -457,10 +457,16 @@ def test_validate_item_requires_exactly_one_selector_for_show():
     )) == "provide exactly one media item QUERY or --id"
 
 
-def test_validate_item_rejects_items_order_by():
+def test_validate_item_play_requires_selector_and_pick_best_rules():
     assert validate_item_args(argparse.Namespace(
-        item_command="search", query="", count="all", order_by="items",
-    )) == "--order-by items can only be used with library search"
+        item_command="play", query=None, id=None, item_id=None, pick_best_item=False,
+    )) == "provide exactly one media item QUERY or --id"
+    assert validate_item_args(argparse.Namespace(
+        item_command="play", query="Matrix", id=None, item_id=None, pick_best_item=True,
+    )) is None
+    assert validate_item_args(argparse.Namespace(
+        item_command="play", query=None, id="1", item_id=None, pick_best_item=True,
+    )) == "--pick-best-item can only be used with QUERY"
 
 
 def test_main_item_invalid_selector_skips_auth(capsys, monkeypatch):

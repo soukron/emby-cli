@@ -11,7 +11,7 @@ from emby_cli.client import EmbyClient
 from emby_cli.constants import SHOW_ITEM_FIELDS
 from emby_cli.item_ops import (
     ItemResolutionError,
-    filter_items,
+    build_item_listing_query,
     item_types_for_api,
     normalize_item_type,
     resolve_item,
@@ -45,9 +45,20 @@ def test_item_types_for_api_defaults_to_search_types():
     assert item_types_for_api("episode") == "Episode"
 
 
-def test_filter_items_by_type_and_year():
-    filtered = filter_items(ITEMS, raw_type="movie", year=1999)
-    assert filtered == [ITEMS[0]]
+def test_build_item_listing_query_delegates_year_and_count_to_api():
+    listing = build_item_listing_query(
+        query="",
+        raw_type="movie",
+        year=2026,
+        count=30,
+        order_by="year",
+        desc=True,
+    )
+    assert listing.item_types == "Movie"
+    assert listing.year == 2026
+    assert listing.api_limit == 30
+    assert listing.api_sort == "year"
+    assert listing.desc is True
 
 
 def test_resolve_item_by_query_unique_match():

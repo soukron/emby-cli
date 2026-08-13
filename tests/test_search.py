@@ -2,14 +2,28 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
+from emby_cli.client import EmbyClient
 from emby_cli.commands import search as search_mod
+
+
+def _search_kwargs(**overrides):
+    base = {
+        "item_types": "Movie,Episode,Audio,Video",
+        "year": None,
+        "limit": None,
+        "sort_by": None,
+        "desc": False,
+        "use_cache": True,
+    }
+    base.update(overrides)
+    return base
 
 
 def test_item_count_all_lists_everything(capsys):
     client = MagicMock()
-    client.search_items_result.return_value = (
+    client.items.search.return_value = (
         [
         {"Id": "a", "Name": "A", "Type": "Movie", "ProductionYear": 2020},
         {"Id": "b", "Name": "B", "Type": "Movie", "ProductionYear": 2021},
@@ -26,17 +40,13 @@ def test_item_count_all_lists_everything(capsys):
     search_mod.cmd_search(client, args)
     out = capsys.readouterr().out
     assert "Total: 2" in out
-    client.search_items_result.assert_called_once_with(
-        "",
-        item_types="Movie,Episode,Audio,Video",
-        limit=None,
-    )
+    client.items.search.assert_called_once_with("", **_search_kwargs())
 
 
 def test_item_query_shows_out_of_when_truncated(capsys):
     client = MagicMock()
-    client.search_items_result.return_value = (
-        [{"Id": str(i), "Name": f"T{i}", "Type": "Movie", "ProductionYear": 2000 + i} for i in range(14)],
+    client.items.search.return_value = (
+        [{"Id": str(i), "Name": f"T{i}", "Type": "Movie", "ProductionYear": 2000 + i} for i in range(2)],
         14,
     )
     args = MagicMock(
@@ -49,12 +59,15 @@ def test_item_query_shows_out_of_when_truncated(capsys):
     search_mod.cmd_search(client, args)
     out = capsys.readouterr().out
     assert "Total: 2 (out of 14)" in out
-    client.search_items_result.assert_called_once()
+    client.items.search.assert_called_once_with(
+        "matrix",
+        **_search_kwargs(limit=2),
+    )
 
 
 def test_item_query_plain_total_when_complete(capsys):
     client = MagicMock()
-    client.search_items_result.return_value = (
+    client.items.search.return_value = (
         [
             {"Id": "1", "Name": "A", "Type": "Movie", "ProductionYear": 1999},
         ],
@@ -93,13 +106,11 @@ def test_library_shows_out_of_when_truncated(capsys):
 
 def test_item_query_filters_by_type_and_year(capsys):
     client = MagicMock()
-    client.search_items_result.return_value = (
+    client.items.search.return_value = (
         [
             {"Id": "1", "Name": "Spider-Man", "Type": "Movie", "ProductionYear": 2026},
-            {"Id": "2", "Name": "Spider-Man", "Type": "Episode", "ProductionYear": 2026},
-            {"Id": "3", "Name": "Spider-Man", "Type": "Movie", "ProductionYear": 2024},
         ],
-        3,
+        1,
     )
     args = MagicMock(
         count=20,
@@ -116,16 +127,15 @@ def test_item_query_filters_by_type_and_year(capsys):
     assert "Episode" not in out
     assert "2024" not in out
     assert "Total: 1" in out
-    client.search_items_result.assert_called_once_with(
+    client.items.search.assert_called_once_with(
         "spider-man",
-        item_types="Movie",
-        limit=None,
+        **_search_kwargs(item_types="Movie", year=2026, limit=20),
     )
 
 
 def test_item_query_filters_lowercase_type(capsys):
     client = MagicMock()
-    client.search_items_result.return_value = (
+    client.items.search.return_value = (
         [
             {"Id": "1", "Name": "Spider-Man", "Type": "Movie", "ProductionYear": 2026},
         ],
@@ -143,10 +153,9 @@ def test_item_query_filters_lowercase_type(capsys):
     search_mod.cmd_search(client, args)
     out = capsys.readouterr().out
     assert "Spider-Man" in out
-    client.search_items_result.assert_called_once_with(
+    client.items.search.assert_called_once_with(
         "spider-man",
-        item_types="Movie",
-        limit=None,
+        **_search_kwargs(item_types="Movie", year=2026),
     )
 
 
@@ -220,11 +229,11 @@ def test_library_type_filter_tvshows(capsys):
 
 def test_item_query_sorts_by_year_desc(capsys):
     client = MagicMock()
-    client.search_items_result.return_value = (
+    client.items.search.return_value = (
         [
-            {"Id": "1", "Name": "A", "Type": "Movie", "ProductionYear": 2021},
             {"Id": "2", "Name": "B", "Type": "Movie", "ProductionYear": 2026},
             {"Id": "3", "Name": "C", "Type": "Movie", "ProductionYear": 2024},
+            {"Id": "1", "Name": "A", "Type": "Movie", "ProductionYear": 2021},
         ],
         3,
     )
@@ -242,6 +251,10 @@ def test_item_query_sorts_by_year_desc(capsys):
     search_mod.cmd_search(client, args)
     out = capsys.readouterr().out
     assert out.index("2026") < out.index("2024") < out.index("2021")
+    client.items.search.assert_called_once_with(
+        "spider-man",
+        **_search_kwargs(sort_by="year", desc=True),
+    )
 
 
 def test_library_query_sorts_by_name_asc(capsys):
@@ -314,7 +327,7 @@ def test_library_query_sorts_by_items_desc_using_computed_counts(capsys):
 
 def test_item_query_sorts_by_size_desc(capsys):
     client = MagicMock()
-    client.search_items_result.return_value = (
+    client.items.search.return_value = (
         [
             {"Id": "1", "Name": "A", "Type": "Movie", "MediaSources": [{"Size": 1000}]},
             {"Id": "2", "Name": "B", "Type": "Movie", "MediaSources": [{"Size": 3000}]},
@@ -338,7 +351,7 @@ def test_item_query_sorts_by_size_desc(capsys):
 
 def test_item_query_sorts_by_resolution_desc(capsys):
     client = MagicMock()
-    client.search_items_result.return_value = (
+    client.items.search.return_value = (
         [
             {"Id": "1", "Name": "A", "Type": "Movie", "MediaStreams": [{"Type": "Video", "Width": 1280}]},
             {"Id": "2", "Name": "B", "Type": "Movie", "MediaStreams": [{"Type": "Video", "Width": 3840}]},
@@ -421,13 +434,9 @@ def test_library_items_no_cache_refreshes_disk(capsys, tmp_path, monkeypatch):
 
 def test_item_query_uses_disk_cache_between_calls(capsys, tmp_path, monkeypatch):
     monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
-    client = MagicMock()
-    client.server_url = "http://x"
-    client.resolve_user_id.return_value = "u1"
-    client.search_items_result.return_value = (
-        [{"Id": "1", "Name": "A", "Type": "Movie", "ProductionYear": 2020}],
-        1,
-    )
+    client = EmbyClient("http://x", api_key="k")
+    client.user_id = "u1"
+    client.use_data_cache = True
     args = MagicMock(
         count="all",
         id=None,
@@ -440,22 +449,23 @@ def test_item_query_uses_disk_cache_between_calls(capsys, tmp_path, monkeypatch)
         desc=False,
         no_cache=False,
     )
-    search_mod.cmd_search(client, args)
-    _ = capsys.readouterr()
-    search_mod.cmd_search(client, args)
-    _ = capsys.readouterr()
-    assert client.search_items_result.call_count == 1
+    with patch.object(
+        client,
+        "_paginate",
+        return_value=([{"Id": "1", "Name": "A", "Type": "Movie", "ProductionYear": 2020}], 1),
+    ) as paginate:
+        search_mod.cmd_search(client, args)
+        _ = capsys.readouterr()
+        search_mod.cmd_search(client, args)
+        _ = capsys.readouterr()
+    assert paginate.call_count == 1
 
 
 def test_item_query_no_cache_refreshes_disk(capsys, tmp_path, monkeypatch):
     monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
-    client = MagicMock()
-    client.server_url = "http://x"
-    client.resolve_user_id.return_value = "u1"
-    client.search_items_result.side_effect = [
-        ([{"Id": "1", "Name": "First", "Type": "Movie", "ProductionYear": 2020}], 1),
-        ([{"Id": "2", "Name": "Second", "Type": "Movie", "ProductionYear": 2021}], 1),
-    ]
+    client = EmbyClient("http://x", api_key="k")
+    client.user_id = "u1"
+    client.use_data_cache = True
     args = MagicMock(
         count="all",
         id=None,
@@ -468,10 +478,18 @@ def test_item_query_no_cache_refreshes_disk(capsys, tmp_path, monkeypatch):
         desc=False,
         no_cache=True,
     )
-    search_mod.cmd_search(client, args)
-    first = capsys.readouterr().out
-    search_mod.cmd_search(client, args)
-    second = capsys.readouterr().out
+    with patch.object(
+        client,
+        "_paginate",
+        side_effect=[
+            ([{"Id": "1", "Name": "First", "Type": "Movie", "ProductionYear": 2020}], 1),
+            ([{"Id": "2", "Name": "Second", "Type": "Movie", "ProductionYear": 2021}], 1),
+        ],
+    ) as paginate:
+        search_mod.cmd_search(client, args)
+        first = capsys.readouterr().out
+        search_mod.cmd_search(client, args)
+        second = capsys.readouterr().out
     assert "First" in first
     assert "Second" in second
-    assert client.search_items_result.call_count == 2
+    assert paginate.call_count == 2

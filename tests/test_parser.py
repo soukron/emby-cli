@@ -476,3 +476,28 @@ def test_item_list_parses_type_year_and_order_by():
     assert args.order_by == "year"
     assert args.desc is True
     assert args.no_cache is True
+
+
+def test_item_search_rejects_unknown_order_by():
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["item", "search", "--order-by", "size"])
+
+
+def test_item_play_parses_query_player_and_pick_best():
+    args = build_parser().parse_args([
+        "item", "play", "Matrix", "--pick-best-item", "--player", "vlc", "--wait",
+    ])
+    assert args.item_command == "play"
+    assert args.query == "Matrix"
+    assert args.pick_best_item is True
+    assert args.player == "vlc"
+    assert args.wait is True
+
+
+def test_item_play_parses_id_and_parent_id():
+    parser = build_parser()
+    by_sub = parser.parse_args(["item", "play", "--id", "100"])
+    by_parent = parser.parse_args(["item", "--id", "100", "play"])
+    assert by_sub.id == "100"
+    assert by_parent.item_id == "100"

@@ -82,23 +82,64 @@ class ItemsService:
             self.client._cache_write(key, items)
         return items
 
-    def _search_key(self, query: str, item_types: str) -> str:
+    def _search_key(
+        self,
+        query: str,
+        item_types: str,
+        *,
+        year: int | None = None,
+        limit: int | None = None,
+        sort_by: str | None = None,
+        desc: bool = False,
+    ) -> str:
         uid = self.client.resolve_user_id()
+        year_part = str(year) if year is not None else ""
+        limit_part = str(limit) if limit is not None else "all"
+        sort_part = sort_by or ""
+        order_part = "desc" if desc else "asc"
         return (
             f"v2:item-search:{self.client.server_url}:{uid}:"
-            f"{item_types}:{query}"
+            f"{item_types}:{query}:{year_part}:{limit_part}:{sort_part}:{order_part}"
         )
+
+    @staticmethod
+    def _emby_sort(
+        sort_by: str | None,
+        *,
+        desc: bool,
+    ) -> tuple[str, str]:
+        mapping = {
+            "name": "SortName",
+            "year": "ProductionYear",
+            "id": "DateCreated",
+        }
+        emby_sort = mapping.get(sort_by or "", "DateCreated")
+        order = "Descending" if desc else "Ascending"
+        if sort_by is None and not desc:
+            order = "Descending"
+        return emby_sort, order
 
     def search(
         self,
         query: str = "",
         *,
         item_types: str | None = None,
+        year: int | None = None,
+        limit: int | None = None,
+        sort_by: str | None = None,
+        desc: bool = False,
         use_cache: bool = True,
     ) -> tuple[list[dict], int]:
-        """Search playable media items via Emby ``SearchTerm``."""
+        """Search playable media items via Emby ``SearchTerm`` and filters."""
         types = item_types or SEARCH_ITEM_TYPES
-        key = self._search_key(query, types)
+        key = self._search_key(
+            query,
+            types,
+            year=year,
+            limit=limit,
+            sort_by=sort_by,
+            desc=desc,
+        )
         if use_cache:
             cached = self.client._cache_read(key)
             if isinstance(cached, dict):
@@ -107,15 +148,21 @@ class ItemsService:
                 if isinstance(items, list) and isinstance(total, int):
                     return items, total
         uid = self.client.resolve_user_id()
+        params: dict = {
+            "SearchTerm": query,
+            "Recursive": "true",
+            "Fields": ITEM_FIELDS,
+            "IncludeItemTypes": types,
+        }
+        if year is not None:
+            params["Years"] = str(year)
+        emby_sort, sort_order = self._emby_sort(sort_by, desc=desc)
+        params["SortBy"] = emby_sort
+        params["SortOrder"] = sort_order
         items, total = self.client._paginate(
             f"/Users/{uid}/Items",
-            {
-                "SearchTerm": query,
-                "Recursive": "true",
-                "Fields": ITEM_FIELDS,
-                "IncludeItemTypes": types,
-            },
-            limit=None,
+            params,
+            limit=limit,
         )
         payload = {"items": items, "total": int(total)}
         if use_cache:

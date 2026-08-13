@@ -8,9 +8,14 @@ import sys
 import requests
 
 from emby_cli.client import EmbyClient
-from emby_cli.constants import SEARCH_COUNT_DEFAULT, SEARCH_ITEM_TYPES
+from emby_cli.constants import SEARCH_COUNT_DEFAULT
 from emby_cli.data_cache import load_json, save_json
 from emby_cli.download_ops import find_library, match_libraries
+from emby_cli.item_ops import (
+    build_item_listing_query,
+    fetch_item_listing,
+    item_types_for_api,
+)
 from emby_cli.mode_args import mode_is_library, resolve_query
 from emby_cli.resolve import (
     item_video_width,
@@ -109,27 +114,6 @@ def _library_rows_cached(
             "ItemCount": count_val,
         })
     return rows
-
-
-def _search_items_result_cached(
-    client: EmbyClient,
-    *,
-    query: str,
-    item_types: str,
-    no_cache: bool,
-) -> tuple[list[dict], int]:
-    server, user_id = _cache_key_parts(client)
-    key = f"v1:item-search:{server}:{user_id}:{item_types}:{query}"
-    if not no_cache:
-        cached = load_json(key)
-        if isinstance(cached, dict):
-            items = cached.get("items")
-            total = cached.get("total")
-            if isinstance(items, list) and isinstance(total, int):
-                return items, total
-    items, total = client.search_items_result(query, item_types=item_types, limit=None)
-    save_json(key, {"items": items, "total": int(total)})
-    return items, int(total)
 
 
 def _item_info_cached(client: EmbyClient, item_id: str, *, no_cache: bool) -> dict:
@@ -330,20 +314,6 @@ def validate_search_args(args: argparse.Namespace) -> str | None:
     return None
 
 
-def _item_matches_filters(item: dict, *, item_type: str | None, year: int | None) -> bool:
-    if item_type and item.get("Type") != item_type:
-        return False
-    if year is not None and item.get("ProductionYear") != year:
-        return False
-    return True
-
-
-def _apply_item_filters(items: list[dict], *, item_type: str | None, year: int | None) -> list[dict]:
-    if not item_type and year is None:
-        return items
-    return [it for it in items if _item_matches_filters(it, item_type=item_type, year=year)]
-
-
 def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
     err = validate_search_args(args)
     if err:
@@ -355,11 +325,11 @@ def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
     item_id = (getattr(args, "id", None) or "").strip() or None
     query, _ = resolve_query(args)
     item_type_raw = _opt_str_arg(args, "item_type")
-    item_type = _normalize_item_type(item_type_raw)
     year = _opt_int_arg(args, "year")
     sort_by = _opt_str_arg(args, "order_by")
-    desc = bool(getattr(args, "desc", False))
-    no_cache = bool(getattr(args, "no_cache", False))
+    desc = getattr(args, "desc", False) is True
+    no_cache = getattr(args, "no_cache", False) is True
+    client.no_data_cache = no_cache
 
     if mode_is_library(args):
         libraries = _get_libraries_cached(client, no_cache=no_cache)
@@ -402,18 +372,35 @@ def cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
         return
 
     search_query = query or ""
-    items, _available = _search_items_result_cached(
-        client,
-        query=search_query,
-        item_types=item_type or SEARCH_ITEM_TYPES,
-        no_cache=no_cache,
-    )
-    filtered = _apply_item_filters(items, item_type=item_type, year=year)
-    ordered = _sort_rows(filtered, sort_by=sort_by, desc=desc, is_library=False)
-    shown = ordered if count is None else ordered[:count]
-    filtered_total = len(filtered)
+    if sort_by in {"size", "resolution"}:
+        items, _total = client.items.search(
+            search_query,
+            item_types=item_types_for_api(item_type_raw),
+            year=year,
+            limit=None,
+            sort_by=None,
+            desc=False,
+            use_cache=not no_cache,
+        )
+        ordered = _sort_rows(items, sort_by=sort_by, desc=desc, is_library=False)
+        shown = ordered if count is None else ordered[:count]
+        available = len(ordered)
+    else:
+        listing = build_item_listing_query(
+            query=search_query,
+            raw_type=item_type_raw,
+            year=year,
+            count=count,
+            order_by=sort_by,
+            desc=desc,
+        )
+        shown, available = fetch_item_listing(
+            client,
+            listing,
+            use_cache=not no_cache,
+        )
     if not shown:
         print("No results.")
         return
     print_item_choices(shown, sort_rows=False)
-    _print_total(len(shown), filtered_total)
+    _print_total(len(shown), available if available > len(shown) else None)

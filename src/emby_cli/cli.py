@@ -285,7 +285,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     it_search.add_argument(
         "--order-by",
-        choices=["year", "name", "id", "size", "resolution"],
+        choices=["year", "name", "id"],
         default=None,
     )
     it_search.add_argument("--desc", action="store_true")
@@ -313,7 +313,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     it_list.add_argument(
         "--order-by",
-        choices=["year", "name", "id", "size", "resolution"],
+        choices=["year", "name", "id"],
         default=None,
     )
     it_list.add_argument("--desc", action="store_true")
@@ -333,6 +333,38 @@ def build_parser() -> argparse.ArgumentParser:
         help="Require a specific item type when resolving QUERY/--id",
     )
     it_show.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass disk cache read and refresh it from API",
+    )
+
+    it_play = it_sub.add_parser("play", help="Play a media item in an external player")
+    it_play.add_argument("query", nargs="?", metavar="QUERY")
+    it_play.add_argument("--id", help="Media item ID to play (comma-separated for multiple)")
+    it_play.add_argument(
+        "--type",
+        dest="item_type",
+        metavar="TYPE",
+        help="Require a specific item type when resolving QUERY/--id",
+    )
+    it_play.add_argument(
+        "--player",
+        default=env("EMBY_PLAYER"),
+        help="External player command or path (env: EMBY_PLAYER), e.g. vlc or "
+             "/Applications/VLC.app/Contents/MacOS/VLC",
+    )
+    it_play.add_argument(
+        "--wait",
+        action="store_true",
+        help="Block until the player process exits (default: detach and return)",
+    )
+    it_play.add_argument(
+        "--pick-best-item",
+        action="store_true",
+        help="On ambiguous search results, auto-select best ≤1080p "
+             "(default: list matches and fail)",
+    )
+    it_play.add_argument(
         "--no-cache",
         action="store_true",
         help="Bypass disk cache read and refresh it from API",

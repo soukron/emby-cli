@@ -4,21 +4,24 @@ from __future__ import annotations
 
 import argparse
 
+import requests
+
 from emby_cli.client import EmbyClient
+from emby_cli.commands.play import _play_one, find_player
 from emby_cli.commands.show import _print_media_item
 from emby_cli.constants import SEARCH_COUNT_DEFAULT
 from emby_cli.item_ops import (
     ITEM_TYPE_ALIASES,
     ItemResolutionError,
-    filter_items,
+    build_item_listing_query,
+    fetch_item_listing,
+    item_matches_type,
     item_selector_id,
-    item_types_for_api,
     normalize_item_type,
     resolve_item,
 )
 from emby_cli.output import print_error
-from emby_cli.resolve import item_video_width, print_item_choices, sort_for_display
-from emby_cli.util import item_remote_size
+from emby_cli.resolve import pick_best_item, print_item_choices
 
 
 def _text(args: argparse.Namespace, name: str) -> str | None:
@@ -59,6 +62,14 @@ def validate_item_args(args: argparse.Namespace) -> str | None:
         item_id = item_selector_id(args)
         if bool(query) == bool(item_id):
             return "provide exactly one media item QUERY or --id"
+    elif command == "play":
+        query = _text(args, "query")
+        item_id = item_selector_id(args)
+        pick_best = getattr(args, "pick_best_item", False) is True
+        if bool(query) == bool(item_id):
+            return "provide exactly one media item QUERY or --id"
+        if item_id and pick_best:
+            return "--pick-best-item can only be used with QUERY"
     else:
         return "provide an item subcommand"
 
@@ -71,68 +82,7 @@ def validate_item_args(args: argparse.Namespace) -> str | None:
     if year is not None and year < 0:
         return "error: --year must be >= 0"
 
-    order_by = _text(args, "order_by")
-    if order_by == "items":
-        return "--order-by items can only be used with library search"
     return None
-
-
-def _sort_key_id(row: dict) -> tuple[int, int, str]:
-    item_id = str(row.get("Id") or "")
-    if item_id.isdigit():
-        return (0, int(item_id), item_id)
-    return (1, 0, item_id.casefold())
-
-
-def _sort_item_rows(rows: list[dict], order_by: str | None, desc: bool) -> list[dict]:
-    if not order_by:
-        return sort_for_display(rows)
-    if order_by == "name":
-        return sorted(
-            rows,
-            key=lambda row: str(row.get("Name") or "").casefold(),
-            reverse=desc,
-        )
-    if order_by == "id":
-        return sorted(rows, key=_sort_key_id, reverse=desc)
-    if order_by == "year":
-        year_rows = [row for row in rows if row.get("ProductionYear") is not None]
-        no_year_rows = [row for row in rows if row.get("ProductionYear") is None]
-        year_rows = sorted(
-            year_rows,
-            key=lambda row: (
-                int(row.get("ProductionYear") or 0),
-                str(row.get("Name") or "").casefold(),
-                _sort_key_id(row),
-            ),
-            reverse=desc,
-        )
-        return year_rows + no_year_rows
-    if order_by == "size":
-        with_size = [row for row in rows if item_remote_size(row) is not None]
-        without_size = [row for row in rows if item_remote_size(row) is None]
-        with_size = sorted(
-            with_size,
-            key=lambda row: (
-                int(item_remote_size(row) or 0),
-                str(row.get("Name") or "").casefold(),
-                _sort_key_id(row),
-            ),
-            reverse=desc,
-        )
-        return with_size + without_size
-    with_res = [row for row in rows if item_video_width(row) is not None]
-    without_res = [row for row in rows if item_video_width(row) is None]
-    with_res = sorted(
-        with_res,
-        key=lambda row: (
-            int(item_video_width(row) or 0),
-            str(row.get("Name") or "").casefold(),
-            _sort_key_id(row),
-        ),
-        reverse=desc,
-    )
-    return with_res + without_res
 
 
 def _print_total(shown: int, available: int | None = None) -> None:
@@ -154,6 +104,7 @@ def _resolve_from_args(
     *,
     use_cache: bool,
     query: str | None = None,
+    pick_best: bool = False,
 ) -> dict:
     try:
         return resolve_item(
@@ -164,31 +115,76 @@ def _resolve_from_args(
             use_cache=use_cache,
         )
     except ItemResolutionError as exc:
+        if pick_best and exc.matches:
+            best = pick_best_item(exc.matches)
+            if best is not None:
+                print_item_choices(exc.matches, selected=best)
+                return best
         _print_resolution_error(exc)
         raise SystemExit(1) from None
 
 
-def _listing_rows(
+def _play_by_id(
     client: EmbyClient,
     args: argparse.Namespace,
     *,
-    query: str,
-    count: int | None,
-) -> tuple[list[dict], list[dict]]:
-    item_types = item_types_for_api(_text(args, "item_type"))
-    items, _total = client.items.search(query, item_types=item_types, use_cache=True)
-    items = filter_items(
-        items,
-        raw_type=_text(args, "item_type"),
-        year=_opt_int(args, "year"),
-    )
-    items = _sort_item_rows(
-        items,
-        _text(args, "order_by"),
-        bool(getattr(args, "desc", False)),
-    )
-    shown = items if count is None else items[:count]
-    return items, shown
+    item_id: str,
+    player_cmd: list[str],
+    wait: bool,
+) -> None:
+    item_ids = [part.strip() for part in item_id.split(",") if part.strip()]
+    total = len(item_ids)
+    errors = 0
+    last_rc = 0
+    for idx, iid in enumerate(item_ids, 1):
+        try:
+            item = client.get_item_info(iid)
+        except (requests.RequestException, RuntimeError) as exc:
+            print_error(f"fetching item {iid}: {exc}", idx=idx, total=total)
+            errors += 1
+            continue
+        raw_type = _text(args, "item_type")
+        if raw_type and not item_matches_type(item, raw_type):
+            print_error(
+                f"item id '{iid}' not found",
+                idx=idx if total > 1 else None,
+                total=total if total > 1 else None,
+            )
+            errors += 1
+            continue
+        rc = _play_one(
+            client,
+            item,
+            player_cmd,
+            wait=wait,
+            idx=idx if total > 1 else None,
+            total=total if total > 1 else None,
+        )
+        if rc != 0:
+            errors += 1
+            last_rc = rc
+    if errors:
+        raise SystemExit(last_rc if last_rc else 1)
+
+
+def _cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
+    wait = getattr(args, "wait", False) is True
+    pick_best = getattr(args, "pick_best_item", False) is True
+    try:
+        player_cmd = find_player(getattr(args, "player", None))
+    except RuntimeError as exc:
+        print_error(str(exc))
+        raise SystemExit(1) from None
+
+    item_id = item_selector_id(args)
+    if item_id:
+        _play_by_id(client, args, item_id=item_id, player_cmd=player_cmd, wait=wait)
+        return
+
+    item = _resolve_from_args(client, args, use_cache=True, pick_best=pick_best)
+    rc = _play_one(client, item, player_cmd, wait=wait)
+    if rc != 0:
+        raise SystemExit(rc)
 
 
 def _cmd_item_listing(
@@ -198,12 +194,24 @@ def _cmd_item_listing(
     query: str,
     count: int | None,
 ) -> None:
-    all_rows, shown = _listing_rows(client, args, query=query, count=count)
+    listing = build_item_listing_query(
+        query=query,
+        raw_type=_text(args, "item_type"),
+        year=_opt_int(args, "year"),
+        count=count,
+        order_by=_text(args, "order_by"),
+        desc=getattr(args, "desc", False) is True,
+    )
+    shown, available = fetch_item_listing(
+        client,
+        listing,
+        use_cache=True,
+    )
     if not shown:
         print("No results.")
         return
     print_item_choices(shown, sort_rows=False)
-    _print_total(len(shown), len(all_rows))
+    _print_total(len(shown), available if available > len(shown) else None)
 
 
 def _cmd_search(client: EmbyClient, args: argparse.Namespace) -> None:
@@ -227,10 +235,11 @@ def cmd_item(client: EmbyClient, args: argparse.Namespace) -> None:
     if error:
         print_error(error)
         raise SystemExit(1)
-    client.no_data_cache = bool(getattr(args, "no_cache", False))
+    client.no_data_cache = getattr(args, "no_cache", False) is True
     handlers = {
         "search": _cmd_search,
         "list": _cmd_list,
         "show": _cmd_show,
+        "play": _cmd_play,
     }
     handlers[args.item_command](client, args)

@@ -1,6 +1,8 @@
-"""Resolution helpers for playable media items."""
+"""Resolution and listing helpers for playable media items."""
 
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 import requests
 
@@ -25,6 +27,18 @@ class ItemResolutionError(ValueError):
     def __init__(self, message: str, matches: list[dict] | None = None):
         super().__init__(message)
         self.matches = matches or []
+
+
+@dataclass(frozen=True)
+class ItemListingQuery:
+    """Parameters for a server-side item listing request."""
+
+    query: str
+    item_types: str
+    year: int | None
+    api_limit: int | None
+    api_sort: str | None
+    desc: bool
 
 
 def item_selector_id(args: object) -> str | None:
@@ -54,23 +68,43 @@ def item_matches_type(item: dict, raw_type: str | None) -> bool:
     return item.get("Type") == normalized
 
 
-def item_matches_year(item: dict, year: int | None) -> bool:
-    if year is None:
-        return True
-    return item.get("ProductionYear") == year
-
-
-def filter_items(
-    items: list[dict],
+def build_item_listing_query(
     *,
+    query: str = "",
     raw_type: str | None = None,
     year: int | None = None,
-) -> list[dict]:
-    return [
-        item
-        for item in items
-        if item_matches_type(item, raw_type) and item_matches_year(item, year)
-    ]
+    count: int | None = None,
+    order_by: str | None = None,
+    desc: bool = False,
+) -> ItemListingQuery:
+    """Build a listing query delegated to Emby (filters, sort, pagination)."""
+    return ItemListingQuery(
+        query=query,
+        item_types=item_types_for_api(raw_type),
+        year=year,
+        api_limit=None if count is None else count,
+        api_sort=order_by,
+        desc=desc,
+    )
+
+
+def fetch_item_listing(
+    client: EmbyClient,
+    listing: ItemListingQuery,
+    *,
+    use_cache: bool = True,
+) -> tuple[list[dict], int]:
+    """Fetch one item listing page from Emby."""
+    items, total = client.items.search(
+        listing.query,
+        item_types=listing.item_types,
+        year=listing.year,
+        limit=listing.api_limit,
+        sort_by=listing.api_sort,
+        desc=listing.desc,
+        use_cache=use_cache,
+    )
+    return items, total
 
 
 def _id_matches(items: list[dict], item_id: str) -> list[dict]:
@@ -109,7 +143,11 @@ def resolve_item(
             response = getattr(exc, "response", None)
             if response is None or response.status_code != 404:
                 raise
-        catalog, _total = client.items.search("", item_types=item_types, use_cache=use_cache)
+        catalog, _total = client.items.search(
+            "",
+            item_types=item_types,
+            use_cache=use_cache,
+        )
         matches = _id_matches(catalog, item_id)
         selector = f"id '{item_id}'"
     elif query:
@@ -122,7 +160,6 @@ def resolve_item(
     else:
         raise ItemResolutionError("provide a media item QUERY or --id")
 
-    matches = filter_items(matches, raw_type=raw_type)
     if len(matches) == 1:
         return matches[0]
     if not matches:

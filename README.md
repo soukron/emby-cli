@@ -175,10 +175,13 @@ emby-cli item search --type audio --count all
 emby-cli item show "The Matrix (1999)"
 emby-cli item show --id 123456
 emby-cli item --id 123456 show
+emby-cli item play "matrix (1999)" --pick-best-item
+emby-cli item play --id 123456 --player vlc --wait
 ```
 
 `item list` is an alias for `item search --count all`. Detail output matches
-`show --item --id`.
+`show --item --id`. `item play` mirrors `play --item` / `play --id` using the
+same player flags.
 
 Legacy `search --item`, `show --item`, `download --item`, and `play --item` still work.
 
@@ -187,6 +190,7 @@ Legacy `search --item`, `show --item`, `download --item`, and `play --item` stil
 Open a title in an external player (VLC, mpv, IINA, …):
 
 ```bash
+emby-cli item play "matrix (1999)" --pick-best-item
 emby-cli play --item "matrix (1999)" --pick-best-item
 emby-cli play --id 123456
 emby-cli play --id 111,222,333
@@ -235,7 +239,7 @@ Library downloads match the library **name** (case-insensitive, unique match req
 
 Read-only commands (`search`, `show`, `play`, `info`, `collection list`,
 `collection search`, `collection show`, `library list`, `library search`, and
-`library show`, `item list`, `item search`, and `item show`) use a JSON disk cache under
+`library show`, `item list`, `item search`, `item show`, and `item play`) use a JSON disk cache under
 `~/.cache/emby-cli/data` (or under `EMBY_CACHE_DIR/data`).
 
 - Default TTL: **600 seconds** (`EMBY_DATA_CACHE_TTL` to override).
