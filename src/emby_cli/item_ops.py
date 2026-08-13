@@ -429,16 +429,24 @@ def play_url(player_cmd: list[str], url: str, *, wait: bool = False) -> int:
 
     By default detaches so closing the player window (common on macOS) does not
     leave this process blocked. Pass wait=True to block until the player exits.
+    Player stdout/stderr are always suppressed so VLC/mpv logs do not clutter the CLI.
     """
+    popen_kwargs = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
     if wait:
-        return subprocess.run([*player_cmd, url], check=False).returncode
+        return subprocess.run(
+            [*player_cmd, url],
+            check=False,
+            **popen_kwargs,
+        ).returncode
 
     subprocess.Popen(
         [*player_cmd, url],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
         start_new_session=True,
+        **popen_kwargs,
     )
     return 0
 

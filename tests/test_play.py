@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -80,3 +81,12 @@ def test_play_items_launches_each(capsys):
     out = capsys.readouterr().out
     assert "[1/2] Playing: A" in out
     assert "[2/2] Playing: B" in out
+
+
+def test_play_url_wait_suppresses_player_output():
+    with patch("emby_cli.item_ops.subprocess.run", return_value=MagicMock(returncode=0)) as run:
+        rc = item_ops.play_url(["vlc"], "http://u/1", wait=True)
+    assert rc == 0
+    assert run.call_args.kwargs["stdin"] is subprocess.DEVNULL
+    assert run.call_args.kwargs["stdout"] is subprocess.DEVNULL
+    assert run.call_args.kwargs["stderr"] is subprocess.DEVNULL
