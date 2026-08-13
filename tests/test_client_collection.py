@@ -201,3 +201,23 @@ def test_delete_collection_checks_type_uncached_then_deletes():
     get.assert_called_once_with("1", use_cache=False)
     delete.assert_called_once_with("1")
     invalidate.assert_called_once_with("1")
+
+
+def test_items_merge_and_update_posts_full_merged_object():
+    client = _client()
+    detail = {"Id": "1", "Name": "Old", "Type": "BoxSet", "SortName": "Old"}
+    with (
+        patch.object(client.items, "get", return_value=dict(detail)) as get,
+        patch.object(client.items, "update") as update,
+    ):
+        result = client.items.merge_and_update(
+            "1",
+            {"Name": "New", "ProductionYear": 1980},
+        )
+    get.assert_called_once_with("1", fields=None, use_cache=False)
+    update.assert_called_once()
+    payload = update.call_args.args[1]
+    assert payload["Name"] == "New"
+    assert payload["ProductionYear"] == 1980
+    assert payload["SortName"] == "Old"
+    assert result["Name"] == "New"

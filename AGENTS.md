@@ -142,6 +142,92 @@ only requested fields → `POST /Items/{id}` with the complete resulting object.
 `POST /Collections` uses query parameters and `retries=1`; retrying creation can
 produce duplicates when the server processed a request but lost its response.
 
+### Entity services — canonical path (collections, genres, people, tags, …)
+
+Use this pattern for **all new entity work**. Do not add parallel browse/update
+paths on `EmbyClient` or duplicate pagination/caching logic in command modules.
+
+**Transport (one place only):** `EmbyClient` owns the session, URL normalization,
+auth/reauth, retries, and `_get` / `_post` / `_delete` / `_paginate`. Entity code
+calls these primitives (usually indirectly via a service), never `requests` directly.
+
+**Reads and generic item mutation (one place only):** `client.items` (`api/items.py`).
+
+| Need | Use | Do not use in new code |
+|------|-----|------------------------|
+| Paginated full list | `client.items.list_all(...)` | `get_items()`, `get_all_items()`, hand-rolled paging loops |
+| One item by ID | `client.items.get(item_id, fields=…)` | `get_item_info()` |
+| Update metadata | `client.items.update(item_id, full_item_dict)` | ad-hoc `_post` from commands |
+| Delete one item | `client.items.delete(item_id)` | ad-hoc `_delete` from commands |
+
+New code must use **v2 cache keys** inside `ItemsService` (`v2:item:…`, `v2:items:…`).
+Legacy `get_item_info` / `get_items` remain for `search`, `show`, `download`, and
+`play` until a scoped migration moves them to thin wrappers over `client.items`.
+When migrating, preserve defaults (e.g. `Fields=ITEM_FIELDS`) and stdout behavior.
+
+**Entity-specific endpoints (add a service when the REST surface is distinct):**
+
+| Entity | Service module | REST boundary | Notes |
+|--------|----------------|---------------|-------|
+| BoxSet collections | `api/collections.py` | `/Collections*` | Membership + catalog cache `v2:collections:…`; delegates delete/type check to `items` |
+| Generic item metadata | `api/items.py` | `/Users/{uid}/Items`, `/Items/{id}` | Shared by all metadata edits |
+| People / actors (future) | `api/people.py` (planned) | `/Persons`, person search | Lookup/create persons before linking on an item |
+| Genres, studios, tags (future) | **no separate HTTP client** | fields on item JSON | Arrays on the item (`Genres`, `Studios`, `Tags`, `People` / artist lists) — mutate via `items` only |
+
+Add `api/<entity>.py` only when Emby exposes a **dedicated route family** (like
+`/Collections` or `/Persons`). Simple array fields on an item belong in a shared
+metadata helper, not a new service per field name.
+
+**Metadata updates (genres, studios, tags, actors, collection `set`, …):**
+
+1. Implement once (e.g. `api/metadata.py` or `ItemsService.merge_and_update`):
+   uncached `items.get(id, fields=…)` → change **only** requested keys in the dict →
+   `items.update(id, merged_dict)`. Never POST partial objects.
+2. Commands stay thin: parse flags → resolve target item/collection → call helper.
+3. Mutations: `use_cache=False` on reads that drive writes; invalidate affected
+   `items` keys (and entity catalog keys if any) via `delete_json` / service
+   `invalidate*` methods — same as collections today.
+
+**CLI layering (repeat per feature area):**
+
+```text
+cli.py  →  validate_*_args (pre-auth)  →  commands/<topic>.py
+                                              ↓
+                                         <topic>_ops.py   # resolution, CSV, policy constants
+                                              ↓
+                                         client.items / client.collections / client.<entity>
+```
+
+- Put **policy constants** in `*_ops.py` (e.g. `COLLECTION_MEMBER_TYPES`), not in
+  transport or services.
+- Put **HTTP and cache keys** in `api/*.py`, not in commands.
+- Register subcommands in `cli.py` + `help.COMMAND_SUMMARIES`; document user-facing
+  behavior in `README.md`.
+
+**Caching rules (all entities):**
+
+- Read-only CLI paths may cache; mutation paths resolve **uncached**.
+- Mutations never write cache entries; invalidate exact keys (hashed filenames — no
+  prefix deletion). Keys always include **normalized server URL + user ID**.
+- `--no-cache`: skip `_cache_read`; still fetch and refresh disk where applicable.
+
+**Tests:** mock at the service or transport boundary (`client.items`, `client._post`),
+not inside command print logic. Add `tests/test_client_<entity>.py` for HTTP
+contracts and `tests/test_<topic>_ops.py` for resolution/policy.
+
+**Anti-patterns (do not introduce):**
+
+- New `requests.Session` or duplicate auth/retry stacks.
+- A speculative `BaseService` hierarchy before a second real consumer exists.
+- Reimplementing `_paginate` or v1 cache keys in new modules.
+- Metadata POSTs built by hand in `commands/` without a full GET merge.
+- Splitting every JSON field (`Genres`, `Tags`, …) into its own `api/*.py` file.
+
+**Planned metadata work (genres / studios / tags / actors):** extend with a
+`metadata` command or `collection set` flags using the shared GET→merge→POST helper
+on `client.items`; add `api/people.py` only if person lookup/creation needs
+`/Persons` beyond item embedded lists. Reuse collection invalidation patterns.
+
 ---
 
 ## Auth and session cache (important)
@@ -193,6 +279,10 @@ Shared pattern (`mode_args.py`) for **`search`** and **`download`**:
 - Member failures are independent: report each `error:` on stderr, submit valid
   IDs once, print `Done. ok=… error=…`, and exit 1 if any failed.
 - `rename` changes only `Name`; `--short-name` additionally changes `SortName`.
+- `set` accepts one or more `KEY=VALUE` assignments (`year`, `name`,
+  `short-name`, `display-order`, `overview`). Parent `--id` may appear before
+  the subcommand (`collection --id X set year=1980`). Uses uncached GET → merge
+  only requested fields → full `POST /Items/{id}` via `items.merge_and_update`.
 - `delete` re-fetches and verifies `Type=BoxSet`, prompts on a TTY, and requires
   `--yes` without interactive stdin. Never weaken this guard or call delete on a
   selector that did not resolve uniquely.
@@ -333,6 +423,7 @@ Maintainers with a local wrapper Makefile may use an equivalent `make release VE
 |------|------------|
 | Auth, retry, browse, download/HLS | `client.py` |
 | Generic item/collection endpoints | `api/items.py`, `api/collections.py` |
+| New entity service or metadata merge helper | `api/items.py` first; `api/<entity>.py` only for distinct REST routes; see **Entity services** above |
 | Collection matching/member policy | `collection_ops.py`, `commands/collection.py` |
 | Item/library QUERY modes | `mode_args.py`, `cli.py`, `commands/{search,show,download,play}.py` |
 | New subcommand or flag | `cli.py`, `commands/…`, `help.COMMAND_SUMMARIES` |

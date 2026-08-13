@@ -13,6 +13,7 @@ from emby_cli.collection_ops import (
     find_collection,
     match_collections,
     parse_item_refs,
+    parse_set_assignments,
     resolve_collection,
     resolve_collection_members,
 )
@@ -64,6 +65,29 @@ def test_parse_item_refs_flattens_csv_and_deduplicates_case_insensitive():
     assert parse_item_refs([" 456, 789 ", "456", "ABC,abc"]) == [
         "456", "789", "ABC",
     ]
+
+
+def test_parse_set_assignments_maps_aliases():
+    assert parse_set_assignments([
+        "year=1980",
+        "name=Peliculas",
+        "short-name=Pelis",
+    ]) == {
+        "ProductionYear": 1980,
+        "Name": "Peliculas",
+        "SortName": "Pelis",
+    }
+
+
+def test_parse_set_assignments_normalizes_display_order():
+    assert parse_set_assignments(["display-order=premieredate"]) == {
+        "DisplayOrder": "PremiereDate",
+    }
+
+
+def test_parse_set_assignments_rejects_unknown_field():
+    with pytest.raises(ValueError, match="unknown field"):
+        parse_set_assignments(["genre=Action"])
 
 
 @pytest.mark.parametrize("values", [[""], ["1,,2"], ["1,   ,2"]])

@@ -393,3 +393,22 @@ def test_collection_delete_yes():
     ])
     assert args.query == "Star Wars"
     assert args.yes is True
+
+
+def test_collection_set_parent_id_before_subcommand():
+    args = build_parser().parse_args([
+        "collection", "--id", "1234", "set", "year=1980",
+    ])
+    assert args.collection_command == "set"
+    assert args.collection_id == "1234"
+    assert args.id is None
+    assert args.rest == ["year=1980"]
+
+
+def test_collection_set_multiple_assignments():
+    args = build_parser().parse_args([
+        "collection", "set", "--id", "1234",
+        "name=Peliculas", "short-name=Pelis",
+    ])
+    assert args.id == "1234"
+    assert args.rest == ["name=Peliculas", "short-name=Pelis"]

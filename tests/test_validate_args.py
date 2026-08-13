@@ -51,6 +51,32 @@ def test_validate_collection_accepts_repeated_csv_members():
     )) is None
 
 
+def test_validate_collection_set_requires_selector_and_assignments():
+    assert validate_collection_args(argparse.Namespace(
+        collection_command="set", query=None, id=None, collection_id=None,
+        rest=["year=1980"],
+    )) == "provide exactly one collection QUERY or --id"
+    assert validate_collection_args(argparse.Namespace(
+        collection_command="set", query=None, id="1234", collection_id=None,
+        rest=[],
+    )) == "provide at least one KEY=VALUE assignment"
+    assert validate_collection_args(argparse.Namespace(
+        collection_command="set", query=None, id=None, collection_id="1234",
+        rest=["year=1980"],
+    )) is None
+    assert validate_collection_args(argparse.Namespace(
+        collection_command="set", query=None, id=None, collection_id=None,
+        rest=["Star Wars", "year=1980"],
+    )) is None
+
+
+def test_validate_collection_set_rejects_unknown_field():
+    assert validate_collection_args(argparse.Namespace(
+        collection_command="set", query=None, id="1234", collection_id=None,
+        rest=["genre=Action"],
+    )) == "unknown field 'genre'; allowed: display-order, name, overview, short-name, year"
+
+
 def test_validate_search_library_allows_empty_selector_with_count_n():
     args = argparse.Namespace(
         library="",

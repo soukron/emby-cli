@@ -13,6 +13,10 @@ Added:
   members continue, with a non-zero exit when any reference fails.
 - `collection rename --short-name` to update Emby's `SortName` together with
   `Name`.
+- `collection set KEY=VALUE …` to update collection metadata (`year`,
+  `name`, `short-name`, `display-order`, `overview`). Parent-level
+  `--id` is supported before the subcommand.
+- `ItemsService.merge_and_update()` for safe GET→merge→POST metadata edits.
 
 Changed:
 

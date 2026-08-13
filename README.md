@@ -104,6 +104,18 @@ emby-cli collection add-item --id 1234 --item 456,789 --item 101
 emby-cli collection remove-item "Star Wars Saga" --item 456,789
 ```
 
+Update metadata with `collection set` (`KEY=VALUE` assignments). `--id` may
+appear before the subcommand:
+
+```bash
+emby-cli collection --id 1234 set year=1980
+emby-cli collection --id 1234 set name=Peliculas short-name=Pelis
+emby-cli collection set "Star Wars" display-order=PremiereDate overview="Saga overview"
+```
+
+Supported fields: `year`, `name`, `short-name`, `display-order`
+(`PremiereDate` or `SortName`), and `overview`.
+
 `--item` is repeatable and accepts comma-separated IDs. In this first version,
 only items whose Emby type is `Movie` can be added or removed. Existing members
 of other types, including music, are still displayed by `collection show`.

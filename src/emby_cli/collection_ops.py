@@ -10,6 +10,16 @@ from emby_cli.client import EmbyClient
 
 COLLECTION_MEMBER_TYPES = frozenset({"Movie"})
 
+SET_FIELD_ALIASES: dict[str, str] = {
+    "year": "ProductionYear",
+    "name": "Name",
+    "short-name": "SortName",
+    "display-order": "DisplayOrder",
+    "overview": "Overview",
+}
+
+DISPLAY_ORDER_VALUES = frozenset({"premieredate", "sortname"})
+
 
 class CollectionResolutionError(ValueError):
     """A collection selector was missing, not found, or ambiguous."""
@@ -96,6 +106,53 @@ def resolve_collection(
         f"collection {selector} is ambiguous; use --id",
         matches,
     )
+
+
+def parse_set_assignments(assignments: list[str]) -> dict[str, object]:
+    """Parse ``KEY=VALUE`` tokens into Emby item field updates."""
+    updates: dict[str, object] = {}
+    for raw in assignments:
+        if "=" not in raw:
+            raise ValueError(f"invalid assignment {raw!r}; use KEY=VALUE")
+        key, _, value = raw.partition("=")
+        alias = key.strip().casefold()
+        value = value.strip()
+        if not alias:
+            raise ValueError(f"invalid assignment {raw!r}; missing field name")
+        if not value:
+            raise ValueError(f"invalid assignment {raw!r}; value cannot be empty")
+        if alias not in SET_FIELD_ALIASES:
+            allowed = ", ".join(sorted(SET_FIELD_ALIASES))
+            raise ValueError(f"unknown field {key.strip()!r}; allowed: {allowed}")
+        emby_key = SET_FIELD_ALIASES[alias]
+        if emby_key == "ProductionYear":
+            try:
+                parsed = int(value)
+            except ValueError as exc:
+                raise ValueError(f"year must be an integer, got {value!r}") from exc
+            updates[emby_key] = parsed
+        elif emby_key == "DisplayOrder":
+            normalized = value.casefold()
+            if normalized not in DISPLAY_ORDER_VALUES:
+                allowed = ", ".join(sorted(DISPLAY_ORDER_VALUES))
+                raise ValueError(
+                    f"display-order must be one of {allowed}, got {value!r}"
+                )
+            updates[emby_key] = (
+                "PremiereDate" if normalized == "premieredate" else "SortName"
+            )
+        else:
+            updates[emby_key] = value
+    return updates
+
+
+def collection_selector_id(args: object) -> str | None:
+    """Return a collection ID from parent ``--id`` or subcommand ``--id``."""
+    for name in ("id", "collection_id"):
+        value = getattr(args, name, None)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
 
 
 def parse_item_refs(values: list[str] | None) -> list[str]:

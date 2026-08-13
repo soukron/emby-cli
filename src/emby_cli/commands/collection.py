@@ -12,7 +12,9 @@ from emby_cli.collection_ops import (
     COLLECTION_MEMBER_TYPES,
     CollectionResolutionError,
     collection_rows,
+    collection_selector_id,
     parse_item_refs,
+    parse_set_assignments,
     resolve_collection,
     resolve_collection_members,
 )
@@ -27,6 +29,23 @@ def _text(args: argparse.Namespace, name: str) -> str | None:
         return None
     value = value.strip()
     return value or None
+
+
+def _parse_set_rest(rest: list[str] | None) -> tuple[str | None, list[str]]:
+    """Split optional collection QUERY from KEY=VALUE assignments."""
+    tokens = [part.strip() for part in (rest or []) if part.strip()]
+    if not tokens:
+        return None, []
+    if "=" in tokens[0]:
+        return None, tokens
+    if len(tokens) == 1:
+        return tokens[0], []
+    return tokens[0], tokens[1:]
+
+
+def _set_args(args: argparse.Namespace) -> tuple[str | None, list[str]]:
+    query, assignments = _parse_set_rest(getattr(args, "rest", None))
+    return query, assignments
 
 
 def _parse_count(value: object) -> int | None:
@@ -51,9 +70,20 @@ def validate_collection_args(args: argparse.Namespace) -> str | None:
     if command == "create":
         if not _text(args, "name"):
             return "provide a collection name"
+    elif command == "set":
+        query, assignments = _set_args(args)
+        collection_id = collection_selector_id(args)
+        if bool(query) == bool(collection_id):
+            return "provide exactly one collection QUERY or --id"
+        if not assignments:
+            return "provide at least one KEY=VALUE assignment"
+        try:
+            parse_set_assignments(assignments)
+        except ValueError as exc:
+            return str(exc)
     elif command in {"show", "delete", "rename", "add-item", "remove-item"}:
         query = _text(args, "query")
-        collection_id = _text(args, "id")
+        collection_id = collection_selector_id(args)
         if bool(query) == bool(collection_id):
             return "provide exactly one collection QUERY or --id"
     else:
@@ -176,12 +206,13 @@ def _resolve_from_args(
     args: argparse.Namespace,
     *,
     use_cache: bool,
+    query: str | None = None,
 ) -> dict:
     try:
         return resolve_collection(
             client,
-            query=_text(args, "query"),
-            collection_id=_text(args, "id"),
+            query=query if query is not None else _text(args, "query"),
+            collection_id=collection_selector_id(args),
             use_cache=use_cache,
         )
     except CollectionResolutionError as exc:
@@ -317,6 +348,31 @@ def _cmd_rename(client: EmbyClient, args: argparse.Namespace) -> None:
     print(message)
 
 
+def _cmd_set(client: EmbyClient, args: argparse.Namespace) -> None:
+    query, assignments = _set_args(args)
+    collection = _resolve_from_args(client, args, use_cache=False, query=query)
+    collection_id = str(collection.get("Id") or "")
+    detail = client.items.get(collection_id, use_cache=False)
+    if detail.get("Type") != "BoxSet":
+        print_error(f"item {collection_id} is not a BoxSet")
+        raise SystemExit(1)
+    updates = parse_set_assignments(assignments)
+    client.items.merge_and_update(collection_id, updates)
+    client.collections.invalidate(collection_id)
+    changed = ", ".join(
+        f"{alias}={updates[field]!r}"
+        for alias, field in (
+            ("year", "ProductionYear"),
+            ("name", "Name"),
+            ("short-name", "SortName"),
+            ("display-order", "DisplayOrder"),
+            ("overview", "Overview"),
+        )
+        if field in updates
+    )
+    print(f"Updated collection [{collection_id}] {changed}")
+
+
 def _cmd_members(client: EmbyClient, args: argparse.Namespace, *, remove: bool) -> None:
     collection = _resolve_from_args(client, args, use_cache=False)
     collection_id = str(collection.get("Id") or "")
@@ -345,6 +401,7 @@ def cmd_collection(client: EmbyClient, args: argparse.Namespace) -> None:
         "create": _cmd_create,
         "delete": _cmd_delete,
         "rename": _cmd_rename,
+        "set": _cmd_set,
     }
     if command == "add-item":
         _cmd_members(client, args, remove=False)

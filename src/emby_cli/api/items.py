@@ -110,6 +110,20 @@ class ItemsService:
         self.client._post(f"/Items/{item_id}", item)
         self.invalidate(item_id)
 
+    def merge_and_update(
+        self,
+        item_id: str,
+        updates: dict[str, object],
+        *,
+        fields: str | None = None,
+    ) -> dict:
+        """GET one item uncached, merge *updates*, POST the full object back."""
+        item = self.get(item_id, fields=fields, use_cache=False)
+        for key, value in updates.items():
+            item[key] = value
+        self.update(item_id, item)
+        return item
+
     def delete(self, item_id: str) -> None:
         """Delete one item using Emby's generic destructive endpoint."""
         self.client._delete(f"/Items/{item_id}")

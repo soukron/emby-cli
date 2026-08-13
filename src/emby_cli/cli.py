@@ -79,6 +79,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     col = sub.add_parser("collection", help=_help_by_name["collection"])
+    col.add_argument(
+        "--id",
+        dest="collection_id",
+        help="Collection ID or unique ID prefix (may appear before the subcommand)",
+    )
     col_sub = col.add_subparsers(dest="collection_command", required=True)
 
     col_search = col_sub.add_parser("search", help="Search collections")
@@ -138,6 +143,15 @@ def build_parser() -> argparse.ArgumentParser:
     col_rename.add_argument(
         "--short-name",
         help="Also update Emby's SortName field",
+    )
+
+    col_set = col_sub.add_parser("set", help="Set collection metadata fields")
+    col_set.add_argument("--id", help="Collection ID or unique ID prefix")
+    col_set.add_argument(
+        "rest",
+        nargs="+",
+        metavar="[QUERY] KEY=VALUE ...",
+        help="Optional collection QUERY, then one or more KEY=VALUE assignments",
     )
 
     for name, summary in (

@@ -222,6 +222,37 @@ def test_delete_noninteractive_requires_yes(capsys):
     assert "pass --yes" in capsys.readouterr().err
 
 
+def test_collection_set_with_parent_id(capsys):
+    client = _client()
+    collection = {"Id": "1234", "Name": "Old", "Type": "BoxSet"}
+    with (
+        patch.object(client.collections, "list", return_value=[collection]),
+        patch.object(
+            client.items,
+            "get",
+            return_value={"Id": "1234", "Name": "Old", "Type": "BoxSet", "SortName": "Old"},
+        ),
+        patch.object(client.items, "merge_and_update") as merge,
+        patch.object(client.collections, "invalidate") as invalidate,
+    ):
+        cmd_collection(
+            client,
+            _args("--id", "1234", "set", "year=1980", "name=Peliculas"),
+        )
+    merge.assert_called_once_with(
+        "1234",
+        {
+            "ProductionYear": 1980,
+            "Name": "Peliculas",
+        },
+    )
+    invalidate.assert_called_once_with("1234")
+    out = capsys.readouterr().out
+    assert "Updated collection [1234]" in out
+    assert "year=1980" in out
+    assert "name='Peliculas'" in out
+
+
 def test_main_collection_403_has_permission_message(capsys, monkeypatch):
     client = _client()
     response = MagicMock(status_code=403)
