@@ -17,17 +17,19 @@ def _client() -> EmbyClient:
 
 def test_item_search_year_and_type_use_api_filters():
     client = _client()
-    with patch.object(client.items, "search", return_value=([], 0)) as search:
+    with patch.object(client.items, "list_items", return_value=([], 0)) as list_items:
         cmd_item(
             client,
             build_parser().parse_args(["item", "search", "--year", "2026", "--type", "movie"]),
         )
-    search.assert_called_once_with(
-        "",
+    list_items.assert_called_once_with(
+        query="",
+        parent_id=None,
         item_types="Movie",
         year=2026,
         limit=30,
         sort_by=None,
         desc=False,
+        when_unsorted="catalog",
         use_cache=True,
     )

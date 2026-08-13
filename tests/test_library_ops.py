@@ -71,7 +71,10 @@ def test_download_library_uses_named_output_subdir():
     library = LIBRARIES[0]
     items = [{"Id": "1", "Name": "Film", "Type": "Movie", "Path": "/media/Film.mkv"}]
     with (
-        patch.object(client, "get_all_items", return_value=items),
+        patch(
+            "emby_cli.library_ops.playable_items_for_parent",
+            return_value=items,
+        ),
         patch("emby_cli.library_ops.download_items", return_value=Stats(ok=1)) as download_items,
     ):
         download_library(
@@ -91,7 +94,10 @@ def test_play_library_delegates_to_play_items():
     library = LIBRARIES[0]
     items = [{"Id": "1", "Name": "Film", "Type": "Movie"}]
     with (
-        patch.object(client, "get_all_items", return_value=items),
+        patch(
+            "emby_cli.library_ops.playable_items_for_parent",
+            return_value=items,
+        ),
         patch("emby_cli.library_ops.play_items", return_value=0) as play_items,
     ):
         rc = play_library(
@@ -100,6 +106,8 @@ def test_play_library_delegates_to_play_items():
             ["vlc"],
             wait=True,
             show_section=False,
+            order_by="added",
+            desc=True,
         )
     assert rc == 0
     assert play_items.call_args.args[1] == items

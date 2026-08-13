@@ -151,10 +151,19 @@ def test_collection_downloadable_items_filters_types():
         {"Id": "2", "Name": "Song", "Type": "Audio"},
         {"Id": "3", "Name": "Folder", "Type": "Folder"},
     ]
-    with patch.object(client.items, "list_all", return_value=members) as list_all:
-        targets = collection_downloadable_items(client, collection)
+    with patch(
+        "emby_cli.collection_ops.playable_items_for_parent",
+        return_value=members,
+    ) as listing:
+        targets = collection_downloadable_items(client, collection, use_cache=False)
     assert [item["Id"] for item in targets] == ["1", "2"]
-    list_all.assert_called_once_with(parent_id="10", use_cache=False)
+    listing.assert_called_once_with(
+        client,
+        "10",
+        order_by=None,
+        desc=False,
+        use_cache=False,
+    )
 
 
 def test_download_collection_uses_named_output_subdir():

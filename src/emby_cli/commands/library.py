@@ -235,6 +235,8 @@ def _cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
         player_cmd,
         wait=True,
         show_section=True,
+        order_by=_text(args, "order_by"),
+        desc=bool(getattr(args, "desc", False)),
     )
     if rc != 0:
         raise SystemExit(rc)

@@ -28,19 +28,21 @@ def test_item_search_output_and_count(capsys):
         {"Id": "1", "Name": "Alpha", "Type": "Movie", "ProductionYear": 2000},
         {"Id": "2", "Name": "Beta", "Type": "Movie", "ProductionYear": 2010},
     ]
-    with patch.object(client.items, "search", return_value=([items[1]], 2)) as search:
+    with patch.object(client.items, "list_items", return_value=([items[1]], 2)) as list_items:
         cmd_item(client, _args("search", "a", "--count", "1", "--order-by", "year", "--desc"))
     out = capsys.readouterr().out
     assert "Beta" in out
     assert "Alpha" not in out
     assert "Total: 1 (out of 2)" in out
-    search.assert_called_once_with(
-        "a",
+    list_items.assert_called_once_with(
+        query="a",
+        parent_id=None,
         item_types="Movie,Episode,Audio,Video",
         year=None,
         limit=1,
         sort_by="year",
         desc=True,
+        when_unsorted="catalog",
         use_cache=True,
     )
 
@@ -51,20 +53,22 @@ def test_item_list_shows_all_without_count_cap(capsys):
         {"Id": "1", "Name": "Alpha", "Type": "Movie", "ProductionYear": 2000},
         {"Id": "2", "Name": "Beta", "Type": "Movie", "ProductionYear": 2010},
     ]
-    with patch.object(client.items, "search", return_value=(items, 2)) as search:
+    with patch.object(client.items, "list_items", return_value=(items, 2)) as list_items:
         cmd_item(client, _args("list"))
     out = capsys.readouterr().out
     assert "Alpha" in out
     assert "Beta" in out
     assert "Total: 2" in out
     assert "out of" not in out
-    search.assert_called_once_with(
-        "",
+    list_items.assert_called_once_with(
+        query="",
+        parent_id=None,
         item_types="Movie,Episode,Audio,Video",
         year=None,
         limit=None,
         sort_by=None,
         desc=False,
+        when_unsorted="catalog",
         use_cache=True,
     )
 
@@ -123,17 +127,19 @@ def test_item_search_filters_by_type(capsys):
         {"Id": "1", "Name": "Song", "Type": "Audio", "ProductionYear": 2020},
         {"Id": "2", "Name": "Movie", "Type": "Movie", "ProductionYear": 2020},
     ]
-    with patch.object(client.items, "search", return_value=([items[0]], 1)) as search:
+    with patch.object(client.items, "list_items", return_value=([items[0]], 1)) as list_items:
         cmd_item(client, _args("search", "--type", "audio", "--count", "all"))
     out = capsys.readouterr().out
     assert "Song" in out
     assert "Movie" not in out
-    search.assert_called_once_with(
-        "",
+    list_items.assert_called_once_with(
+        query="",
+        parent_id=None,
         item_types="Audio",
         year=None,
         limit=None,
         sort_by=None,
         desc=False,
+        when_unsorted="catalog",
         use_cache=True,
     )

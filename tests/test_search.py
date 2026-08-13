@@ -8,6 +8,22 @@ from emby_cli.client import EmbyClient
 from emby_cli.commands import search as search_mod
 
 
+def _list_items_kwargs(**overrides):
+    base = {
+        "query": "",
+        "parent_id": None,
+        "item_types": "Movie,Episode,Audio,Video",
+        "year": None,
+        "limit": None,
+        "sort_by": None,
+        "desc": False,
+        "when_unsorted": "catalog",
+        "use_cache": True,
+    }
+    base.update(overrides)
+    return base
+
+
 def _search_kwargs(**overrides):
     base = {
         "item_types": "Movie,Episode,Audio,Video",
@@ -23,7 +39,7 @@ def _search_kwargs(**overrides):
 
 def test_item_count_all_lists_everything(capsys):
     client = MagicMock()
-    client.items.search.return_value = (
+    client.items.list_items.return_value = (
         [
         {"Id": "a", "Name": "A", "Type": "Movie", "ProductionYear": 2020},
         {"Id": "b", "Name": "B", "Type": "Movie", "ProductionYear": 2021},
@@ -40,12 +56,12 @@ def test_item_count_all_lists_everything(capsys):
     search_mod.cmd_search(client, args)
     out = capsys.readouterr().out
     assert "Total: 2" in out
-    client.items.search.assert_called_once_with("", **_search_kwargs())
+    client.items.list_items.assert_called_once_with(**_list_items_kwargs())
 
 
 def test_item_query_shows_out_of_when_truncated(capsys):
     client = MagicMock()
-    client.items.search.return_value = (
+    client.items.list_items.return_value = (
         [{"Id": str(i), "Name": f"T{i}", "Type": "Movie", "ProductionYear": 2000 + i} for i in range(2)],
         14,
     )
@@ -59,15 +75,14 @@ def test_item_query_shows_out_of_when_truncated(capsys):
     search_mod.cmd_search(client, args)
     out = capsys.readouterr().out
     assert "Total: 2 (out of 14)" in out
-    client.items.search.assert_called_once_with(
-        "matrix",
-        **_search_kwargs(limit=2),
+    client.items.list_items.assert_called_once_with(
+        **_list_items_kwargs(query="matrix", limit=2),
     )
 
 
 def test_item_query_plain_total_when_complete(capsys):
     client = MagicMock()
-    client.items.search.return_value = (
+    client.items.list_items.return_value = (
         [
             {"Id": "1", "Name": "A", "Type": "Movie", "ProductionYear": 1999},
         ],
@@ -106,7 +121,7 @@ def test_library_shows_out_of_when_truncated(capsys):
 
 def test_item_query_filters_by_type_and_year(capsys):
     client = MagicMock()
-    client.items.search.return_value = (
+    client.items.list_items.return_value = (
         [
             {"Id": "1", "Name": "Spider-Man", "Type": "Movie", "ProductionYear": 2026},
         ],
@@ -127,15 +142,19 @@ def test_item_query_filters_by_type_and_year(capsys):
     assert "Episode" not in out
     assert "2024" not in out
     assert "Total: 1" in out
-    client.items.search.assert_called_once_with(
-        "spider-man",
-        **_search_kwargs(item_types="Movie", year=2026, limit=20),
+    client.items.list_items.assert_called_once_with(
+        **_list_items_kwargs(
+            query="spider-man",
+            item_types="Movie",
+            year=2026,
+            limit=20,
+        ),
     )
 
 
 def test_item_query_filters_lowercase_type(capsys):
     client = MagicMock()
-    client.items.search.return_value = (
+    client.items.list_items.return_value = (
         [
             {"Id": "1", "Name": "Spider-Man", "Type": "Movie", "ProductionYear": 2026},
         ],
@@ -153,9 +172,12 @@ def test_item_query_filters_lowercase_type(capsys):
     search_mod.cmd_search(client, args)
     out = capsys.readouterr().out
     assert "Spider-Man" in out
-    client.items.search.assert_called_once_with(
-        "spider-man",
-        **_search_kwargs(item_types="Movie", year=2026),
+    client.items.list_items.assert_called_once_with(
+        **_list_items_kwargs(
+            query="spider-man",
+            item_types="Movie",
+            year=2026,
+        ),
     )
 
 
@@ -229,7 +251,7 @@ def test_library_type_filter_tvshows(capsys):
 
 def test_item_query_sorts_by_year_desc(capsys):
     client = MagicMock()
-    client.items.search.return_value = (
+    client.items.list_items.return_value = (
         [
             {"Id": "2", "Name": "B", "Type": "Movie", "ProductionYear": 2026},
             {"Id": "3", "Name": "C", "Type": "Movie", "ProductionYear": 2024},
@@ -251,9 +273,8 @@ def test_item_query_sorts_by_year_desc(capsys):
     search_mod.cmd_search(client, args)
     out = capsys.readouterr().out
     assert out.index("2026") < out.index("2024") < out.index("2021")
-    client.items.search.assert_called_once_with(
-        "spider-man",
-        **_search_kwargs(sort_by="year", desc=True),
+    client.items.list_items.assert_called_once_with(
+        **_list_items_kwargs(query="spider-man", sort_by="year", desc=True),
     )
 
 

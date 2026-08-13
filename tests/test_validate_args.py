@@ -219,7 +219,9 @@ def test_validate_search_rejects_library_sort_year():
         item_type=None,
         year=None,
     )
-    assert validate_search_args(args) == "--order-by year/size/resolution can only be used with --item/--media-item"
+    assert validate_search_args(args) == (
+        "--order-by year/size/resolution/release-date/added can only be used with --item/--media-item"
+    )
 
 
 def test_validate_search_rejects_library_sort_size():
@@ -233,7 +235,9 @@ def test_validate_search_rejects_library_sort_size():
         item_type=None,
         year=None,
     )
-    assert validate_search_args(args) == "--order-by year/size/resolution can only be used with --item/--media-item"
+    assert validate_search_args(args) == (
+        "--order-by year/size/resolution/release-date/added can only be used with --item/--media-item"
+    )
 
 
 def test_validate_search_accepts_library_type_filter():

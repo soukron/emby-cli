@@ -9,7 +9,7 @@ import requests
 
 from emby_cli.client import EmbyClient
 from emby_cli.constants import DOWNLOADABLE_TYPES
-from emby_cli.item_ops import download_items, play_items
+from emby_cli.item_ops import download_items, play_items, playable_items_for_parent
 from emby_cli.output import Stats, print_section
 from emby_cli.util import safe_output_dir_name
 
@@ -252,10 +252,23 @@ def collection_rows(collections: list[dict]) -> list[dict]:
     ]
 
 
-def collection_downloadable_items(client: EmbyClient, collection: dict) -> list[dict]:
+def collection_downloadable_items(
+    client: EmbyClient,
+    collection: dict,
+    *,
+    order_by: str | None = None,
+    desc: bool = False,
+    use_cache: bool = True,
+) -> list[dict]:
     """Return downloadable media items belonging to one collection."""
     collection_id = str(collection.get("Id") or "")
-    items = client.items.list_all(parent_id=collection_id, use_cache=False)
+    items = playable_items_for_parent(
+        client,
+        collection_id,
+        order_by=order_by,
+        desc=desc,
+        use_cache=use_cache,
+    )
     return [item for item in items if item.get("Type") in DOWNLOADABLE_TYPES]
 
 
@@ -277,7 +290,7 @@ def download_collection(
     if show_section:
         print_section(f"Collection: {name}")
 
-    targets = collection_downloadable_items(client, collection)
+    targets = collection_downloadable_items(client, collection, use_cache=False)
     print(f"Found {len(targets)} items in '{name}'")
 
     dest_dir = output / safe_output_dir_name(name)
@@ -302,13 +315,21 @@ def play_collection(
     *,
     wait: bool = False,
     show_section: bool = True,
+    order_by: str | None = None,
+    desc: bool = False,
 ) -> int:
     """Play every playable member in *collection* via ``item_ops``."""
     name = collection.get("Name") or "?"
     if show_section:
         print_section(f"Collection: {name}")
 
-    targets = collection_downloadable_items(client, collection)
+    targets = collection_downloadable_items(
+        client,
+        collection,
+        order_by=order_by,
+        desc=desc,
+        use_cache=True,
+    )
     print(f"Found {len(targets)} items in '{name}'")
     return play_items(
         client,

@@ -98,6 +98,7 @@ emby-cli collection download "Star Wars" --dry-run
 emby-cli collection download --id 1234 -o ./downloads
 emby-cli collection play "Star Wars" --player vlc
 emby-cli collection play --id 1234
+emby-cli collection play "Star Wars" --order-by release-date --desc
 ```
 
 `collection download` resolves the collection and downloads each member

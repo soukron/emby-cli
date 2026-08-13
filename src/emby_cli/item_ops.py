@@ -10,6 +10,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import requests
 
@@ -48,16 +49,21 @@ class ItemResolutionError(ValueError):
         self.matches = matches or []
 
 
+ListingDefault = Literal["catalog", "parent"]
+
+
 @dataclass(frozen=True)
 class ItemListingQuery:
     """Parameters for a server-side item listing request."""
 
-    query: str
-    item_types: str
-    year: int | None
-    api_limit: int | None
-    api_sort: str | None
-    desc: bool
+    query: str = ""
+    parent_id: str | None = None
+    item_types: str = SEARCH_ITEM_TYPES
+    year: int | None = None
+    api_limit: int | None = None
+    order_by: str | None = None
+    desc: bool = False
+    when_unsorted: ListingDefault = "catalog"
 
 
 def item_selector_id(args: object) -> str | None:
@@ -90,20 +96,24 @@ def item_matches_type(item: dict, raw_type: str | None) -> bool:
 def build_item_listing_query(
     *,
     query: str = "",
+    parent_id: str | None = None,
     raw_type: str | None = None,
     year: int | None = None,
     count: int | None = None,
     order_by: str | None = None,
     desc: bool = False,
+    when_unsorted: ListingDefault = "catalog",
 ) -> ItemListingQuery:
     """Build a listing query delegated to Emby (filters, sort, pagination)."""
     return ItemListingQuery(
         query=query,
+        parent_id=parent_id,
         item_types=item_types_for_api(raw_type),
         year=year,
         api_limit=None if count is None else count,
-        api_sort=order_by,
+        order_by=order_by,
         desc=desc,
+        when_unsorted=when_unsorted,
     )
 
 
@@ -113,17 +123,41 @@ def fetch_item_listing(
     *,
     use_cache: bool = True,
 ) -> tuple[list[dict], int]:
-    """Fetch one item listing page from Emby."""
-    items, total = client.items.search(
-        listing.query,
+    """Fetch item rows from Emby using one listing query builder."""
+    return client.items.list_items(
+        query=listing.query,
+        parent_id=listing.parent_id,
         item_types=listing.item_types,
         year=listing.year,
         limit=listing.api_limit,
-        sort_by=listing.api_sort,
+        sort_by=listing.order_by,
         desc=listing.desc,
+        when_unsorted=listing.when_unsorted,
         use_cache=use_cache,
     )
-    return items, total
+
+
+def playable_items_for_parent(
+    client: EmbyClient,
+    parent_id: str,
+    *,
+    order_by: str | None = None,
+    desc: bool = False,
+    use_cache: bool = True,
+) -> list[dict]:
+    """List playable media under *parent_id*, optionally sorted for play/download."""
+    items, _total = fetch_item_listing(
+        client,
+        ItemListingQuery(
+            parent_id=parent_id,
+            item_types=SEARCH_ITEM_TYPES,
+            order_by=order_by,
+            desc=desc,
+            when_unsorted="parent",
+        ),
+        use_cache=use_cache,
+    )
+    return items
 
 
 def _id_matches(items: list[dict], item_id: str) -> list[dict]:

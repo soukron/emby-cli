@@ -10,10 +10,12 @@ import requests
 from emby_cli.client import EmbyClient
 from emby_cli.constants import SHOW_ITEM_FIELDS
 from emby_cli.item_ops import (
+    ItemListingQuery,
     ItemResolutionError,
     build_item_listing_query,
     item_types_for_api,
     normalize_item_type,
+    playable_items_for_parent,
     resolve_item,
 )
 
@@ -57,8 +59,34 @@ def test_build_item_listing_query_delegates_year_and_count_to_api():
     assert listing.item_types == "Movie"
     assert listing.year == 2026
     assert listing.api_limit == 30
-    assert listing.api_sort == "year"
+    assert listing.order_by == "year"
     assert listing.desc is True
+
+
+def test_playable_items_for_parent_delegates_to_fetch_item_listing():
+    client = _client()
+    listing = ItemListingQuery(
+        parent_id="569",
+        item_types="Movie,Episode,Audio,Video",
+        order_by="added",
+        desc=True,
+        when_unsorted="parent",
+    )
+    with patch(
+        "emby_cli.item_ops.fetch_item_listing",
+        return_value=([{"Id": "1"}], 1),
+    ) as fetch:
+        items = playable_items_for_parent(
+            client,
+            "569",
+            order_by="added",
+            desc=True,
+            use_cache=False,
+        )
+    assert items == [{"Id": "1"}]
+    fetch.assert_called_once()
+    assert fetch.call_args.args[1] == listing
+    assert fetch.call_args.kwargs["use_cache"] is False
 
 
 def test_resolve_item_by_query_unique_match():

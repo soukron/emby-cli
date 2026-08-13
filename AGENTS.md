@@ -313,7 +313,9 @@ Shared pattern (`mode_args.py`) for **`search`** and **`download`**:
 - `collection play` resolves one collection by QUERY or `--id`, lists playable
   members (`Movie`, `Episode`, `Audio`, `Video`), and opens each DirectStream URL
   via `item_ops.play_items`. Always waits for each player process to exit before
-  starting the next item. Supports `--player` and parent/subcommand `--id`.
+  starting the next item. Supports `--player`, `--order-by`
+  (`year`, `name`, `id`, `release-date`, `added`, `resolution`), `--desc`, and
+  parent/subcommand `--id`.
 
 ### Libraries
 
@@ -337,7 +339,9 @@ Read-only entity commands (`library list`, `library search`, `library show`) plu
   server mount prefix before mirroring.
 - `library play` resolves one library by QUERY or `--id`, lists playable items, and
   opens each DirectStream URL via `item_ops.play_items`. Always waits for each
-  player process to exit before starting the next item. Supports `--player`.
+  player process to exit before starting the next item. Supports `--player`,
+  `--order-by` (`year`, `name`, `id`, `release-date`, `added`, `resolution`), and
+  `--desc`.
 - No `create`, `rename`, `delete`, `set`, `add-item`, or `remove-item` for libraries.
 
 ### Media items
@@ -348,10 +352,11 @@ Read-only entity commands (`item list`, `item search`, `item show`, `item play`)
 unchanged until a later migration.
 
 - `item list` lists every matching item (alias of `item search --count all`).
-  Uses Emby ``SearchTerm`` via `ItemsService.search()` with v2 cache keys.
+  Uses `item_ops.build_item_listing_query()` + `fetch_item_listing()` →
+  `ItemsService.list_items()` (optional `SearchTerm`; optional `ParentId` for scoped lists).
 - `item search [QUERY]` supports `--type`, `--year`, `--order-by`
-  (`year`, `name`, `id`), `--desc`, and `--no-cache`. Filters, sort, and
-  pagination are delegated to Emby (`SearchTerm`, `IncludeItemTypes`, `Years`,
+  (`year`, `name`, `id`, `release-date`, `added`, `resolution`), `--desc`, and
+  `--no-cache`. Filters, sort, and pagination are delegated to Emby (`SearchTerm`, `IncludeItemTypes`, `Years`,
   `SortBy`/`SortOrder`, `Limit`).
 - `item show` resolves one item by QUERY or `--id` (exact/unique prefix). Parent
   `--id` may appear before the subcommand. Reuses `commands/show._print_media_item`.

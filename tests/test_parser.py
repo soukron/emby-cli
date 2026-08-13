@@ -557,6 +557,14 @@ def test_collection_play_parses_id():
     assert args.player == "mpv"
 
 
+def test_collection_play_parses_order_by():
+    args = build_parser().parse_args([
+        "collection", "play", "--id", "1234", "--order-by", "release-date", "--desc",
+    ])
+    assert args.order_by == "release-date"
+    assert args.desc is True
+
+
 def test_download_mirror_path_flag():
     args = build_parser().parse_args([
         "item", "download", "Matrix", "--mirror-path",

@@ -27,7 +27,7 @@ from emby_cli.commands.play import cmd_play, validate_play_args
 from emby_cli.commands.search import cmd_search, validate_search_args
 from emby_cli.commands.show import cmd_show, validate_show_args
 from emby_cli.commands.version import cmd_version
-from emby_cli.constants import DEFAULT_OUTPUT, SEARCH_COUNT_DEFAULT
+from emby_cli.constants import DEFAULT_OUTPUT, MEDIA_ITEM_ORDER_BY, SEARCH_COUNT_DEFAULT
 from emby_cli.credentials import (
     CredentialError,
     resolve_operational_auth,
@@ -116,6 +116,20 @@ def _add_play_options(
             action="store_true",
             help="Block until the player process exits (default: detach and return)",
         )
+
+
+def _add_item_order_by_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--order-by",
+        choices=MEDIA_ITEM_ORDER_BY,
+        default=None,
+        help="Sort playable items before play (server-side except id)",
+    )
+    parser.add_argument(
+        "--desc",
+        action="store_true",
+        help="Sort descending (default: ascending for play lists)",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -235,6 +249,7 @@ def build_parser() -> argparse.ArgumentParser:
     col_play.add_argument("query", nargs="?", metavar="QUERY")
     col_play.add_argument("--id", help="Collection ID or unique ID prefix")
     _add_play_options(col_play, env=env, implicit_wait=True)
+    _add_item_order_by_options(col_play)
 
     col_create = col_sub.add_parser("create", help="Create a collection")
     col_create.add_argument("name", metavar="NAME")
@@ -376,6 +391,7 @@ def build_parser() -> argparse.ArgumentParser:
     lib_play.add_argument("query", nargs="?", metavar="QUERY")
     lib_play.add_argument("--id", help="Library ID or unique ID prefix")
     _add_play_options(lib_play, env=env, implicit_wait=True)
+    _add_item_order_by_options(lib_play)
 
     it = sub.add_parser("item", help=_help_by_name["item"])
     it.add_argument(
@@ -408,7 +424,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     it_search.add_argument(
         "--order-by",
-        choices=["year", "name", "id"],
+        choices=MEDIA_ITEM_ORDER_BY,
         default=None,
     )
     it_search.add_argument("--desc", action="store_true")
@@ -436,7 +452,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     it_list.add_argument(
         "--order-by",
-        choices=["year", "name", "id"],
+        choices=MEDIA_ITEM_ORDER_BY,
         default=None,
     )
     it_list.add_argument("--desc", action="store_true")
@@ -659,7 +675,7 @@ def build_parser() -> argparse.ArgumentParser:
     sr.add_argument(
         "--order-by",
         dest="order_by",
-        choices=["year", "name", "id", "size", "resolution", "items"],
+        choices=["year", "name", "id", "size", "resolution", "items", "release-date", "added"],
         default=None,
         help="Order search results by year, name, id, size, resolution, or items",
     )

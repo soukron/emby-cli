@@ -32,12 +32,20 @@ Added:
 - `--mirror-path` and `EMBY_PATH_STRIP` / `--path-strip` to recreate server
   subdirectories under the output folder when needed.
 - `library play` and `collection play` to launch an external player for every
-  playable item in a library view or collection.
+  playable item in a library view or collection, with optional `--order-by`.
 - Legacy top-level `download` remains as a thin wrapper over the new helpers.
 
 Changed:
 
+- `item list` / `item search` / legacy `search --item`: `--order-by` adds
+  `release-date` (`PremiereDate`), `added` (`DateCreated`), and `resolution`
+  (`Resolution,SortName`, same as Emby Web).
+- `library play` and `collection play`: optional `--order-by` / `--desc` using the
+  same item sort keys (`year`, `name`, `id`, `release-date`, `added`, `resolution`).
 - Download orchestration, skip logic, and item loops now live in `item_ops.py`;
+  `library play` / `collection play` list members via the same
+  `ItemListingQuery` + `fetch_item_listing()` path as `item list/search`
+  (scoped with `parent_id`).
   `download_ops.py` retains library name/id matching only.
 - `EmbyClient` now composes entity-oriented `ItemsService`,
   `CollectionsService`, and `LibrariesService` modules while retaining one shared HTTP/auth/retry/cache

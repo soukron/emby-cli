@@ -7,7 +7,7 @@ from pathlib import Path
 from emby_cli.client import EmbyClient
 from emby_cli.constants import DOWNLOADABLE_TYPES
 from emby_cli.download_ops import find_library, match_libraries
-from emby_cli.item_ops import download_items, play_items
+from emby_cli.item_ops import download_items, play_items, playable_items_for_parent
 from emby_cli.output import Stats, print_section
 from emby_cli.util import safe_output_dir_name
 
@@ -98,9 +98,22 @@ def resolve_library(
     )
 
 
-def library_downloadable_items(client: EmbyClient, library: dict) -> list[dict]:
+def library_downloadable_items(
+    client: EmbyClient,
+    library: dict,
+    *,
+    order_by: str | None = None,
+    desc: bool = False,
+    use_cache: bool = True,
+) -> list[dict]:
     """Return downloadable media items belonging to one library view."""
-    items = client.get_all_items(parent_id=library["Id"])
+    items = playable_items_for_parent(
+        client,
+        str(library["Id"]),
+        order_by=order_by,
+        desc=desc,
+        use_cache=use_cache,
+    )
     return [item for item in items if item.get("Type") in DOWNLOADABLE_TYPES]
 
 
@@ -121,7 +134,7 @@ def download_library(
     if show_section:
         print_section(f"Library: {library['Name']}")
 
-    targets = library_downloadable_items(client, library)
+    targets = library_downloadable_items(client, library, use_cache=False)
     print(f"Found {len(targets)} items in '{library['Name']}'")
 
     dest_dir = output / safe_output_dir_name(library["Name"])
@@ -146,12 +159,20 @@ def play_library(
     *,
     wait: bool = False,
     show_section: bool = True,
+    order_by: str | None = None,
+    desc: bool = False,
 ) -> int:
     """Play every playable item in *library* via ``item_ops``."""
     if show_section:
         print_section(f"Library: {library['Name']}")
 
-    targets = library_downloadable_items(client, library)
+    targets = library_downloadable_items(
+        client,
+        library,
+        order_by=order_by,
+        desc=desc,
+        use_cache=True,
+    )
     print(f"Found {len(targets)} items in '{library['Name']}'")
     return play_items(
         client,
