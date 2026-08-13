@@ -358,23 +358,26 @@ wrappers (stderr warning).
   Uses `item_ops.build_item_listing_query()` + `fetch_item_listing()` →
   `ItemsService.list_items()` (optional `SearchTerm`; optional `ParentId` for scoped lists).
 - `item search [QUERY]` supports `--type`, `--year`, `--order-by`
-  (`year`, `name`, `id`, `release-date`, `added`, `resolution`, `size`), `--desc`, and
-  `--no-cache`. Filters, sort, and pagination are delegated to Emby (`SearchTerm`, `IncludeItemTypes`, `Years`,
-  `SortBy`/`SortOrder`, `Limit`).
+  (`year`, `name`, `id`, `release-date`, `added`, `resolution`, `size`), `--desc`,
+  `--no-cache`, and `--parse-query` (title-line syntax: `Movie (1999)`, `Show S01E01`).
+  Default QUERY mode is strict Emby `SearchTerm`. Filters, sort, and pagination are
+  delegated to Emby (`SearchTerm`, `IncludeItemTypes`, `Years`, `SortBy`/`SortOrder`,
+  `Limit`). Episode tables include a `Series` column when applicable.
 - `item show` resolves one item by QUERY or `--id` (exact/unique prefix). Parent
-  `--id` may appear before the subcommand. Reuses `commands/show._print_media_item`.
+  `--id` may appear before the subcommand. Supports `--parse-query` like search.
+  Reuses `commands/show._print_media_item`.
 - `item play` resolves one item by QUERY or `--id` and opens a DirectStream URL via
   `item_ops` playback helpers (`find_player`, `play_one_item`, `play_item_ids`).
-  Supports `--player`, `--wait`, `--pick-best-item`, `--no-cache`, and
-  comma-separated `--id`. Parent `--id` may appear before the subcommand.
-  QUERY lines use strict title resolution (`resolve_title_items`, same as legacy
+  Supports `--player`, `--wait`, `--pick-best-item`, `--no-cache`, `--no-parse-query`,
+  and comma-separated `--id`. Parent `--id` may appear before the subcommand.
+  QUERY defaults to title-line resolution (`resolve_title_items`, same as legacy
   `play --item`). Legacy top-level `play` is a deprecated wrapper.
 - `item download` resolves one item by QUERY or `--id` (CSV supported) and downloads
   via `item_ops` (`download_items`, `download_item_ids`, `download_from_file`).
   Supports `--output`, `--method`, `--force`, `--throttle`, `--pick-best-item`,
-  `--dry-run`, `--from-file`, and optional `--mirror-path`. QUERY / `--from-file`
-  use strict title resolution (`resolve_title_items`). Legacy top-level
-  `download --item` / `download --from-file` are deprecated wrappers.
+  `--dry-run`, `--from-file`, `--no-parse-query`, and optional `--mirror-path`.
+  QUERY / `--from-file` default to title-line resolution (`resolve_title_items`).
+  Legacy top-level `download --item` / `download --from-file` are deprecated wrappers.
 - No `create`, `rename`, or `delete` for items in this phase.
 
 ### Output streams

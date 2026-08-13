@@ -121,11 +121,14 @@ def print_item_choices(
     excluded = excluded or set()
     id_w = max(len("ID"), max(len(str(it.get("Id", ""))) for it in items))
     name_w = 44
+    show_series = any(it.get("Type") == "Episode" for it in items)
+    series_w = 28 if show_series else 0
 
-    header = (
-        f"{'ID':<{id_w}}  {'Name':<{name_w}}  {'Year':<4}  {'Type':<8}  "
-        f"{'Res':>5}  {'Size':>9}"
-    )
+    header_parts = [f"{'ID':<{id_w}}", f"{'Name':<{name_w}}"]
+    if show_series:
+        header_parts.append(f"{'Series':<{series_w}}")
+    header_parts.extend([f"{'Year':<4}", f"{'Type':<8}", f"{'Res':>5}", f"{'Size':>9}"])
+    header = "  ".join(header_parts)
     print()
     print(header)
     print("-" * len(header))
@@ -144,10 +147,14 @@ def print_item_choices(
         itype = str(it.get("Type") or "?")
         res = classify_resolution(item_video_width(it))
         size = format_size(item_remote_size(it))
-        print(
-            f"{iid:<{id_w}}  {label:<{name_w}}  {year:<4}  {itype:<8}  "
-            f"{res:>5}  {size:>9}"
-        )
+        row_parts = [f"{iid:<{id_w}}", f"{label:<{name_w}}"]
+        if show_series:
+            series = str(it.get("SeriesName") or "?")
+            if len(series) > series_w:
+                series = series[: series_w - 1] + "…"
+            row_parts.append(f"{series:<{series_w}}")
+        row_parts.extend([f"{year:<4}", f"{itype:<8}", f"{res:>5}", f"{size:>9}"])
+        print("  ".join(row_parts))
 
 
 def print_available_libraries(libraries: list[dict]) -> None:

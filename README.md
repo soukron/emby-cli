@@ -178,19 +178,25 @@ Legacy library browsing via `search --library`, `show --library`, and
 
 ### Media items
 
-Search movies, episodes, audio, and other playable items. A positional name uses
-Emby search; use `--id` when results are ambiguous:
+Search movies, episodes, audio, and other playable items. By default QUERY is sent
+to Emby as free text (`SearchTerm`); refine with `--type`, `--year`, or `--count`.
+Use `--parse-query` for structured lines such as `Matrix (1999)` or
+`Californication S01E01`. Episode rows include a `Series` column when applicable.
+Use `--id` when results are ambiguous:
 
 ```bash
 emby-cli item list
 emby-cli item list --type movie --year 1999 --order-by year --desc
 emby-cli item search --type movie --order-by size --desc
-emby-cli item search "matrix"
+emby-cli item search "Piloto" --type episode
+emby-cli item search "Matrix (1999)" --parse-query --type movie
+emby-cli item search "Californication S01E01" --parse-query
 emby-cli item search --type audio --count all
-emby-cli item show "The Matrix (1999)"
+emby-cli item show "The Matrix (1999)" --parse-query
 emby-cli item show --id 123456
 emby-cli item --id 123456 show
-emby-cli item play "matrix (1999)" --pick-best-item
+emby-cli item play "breaking bad S01E01" --pick-best-item
+emby-cli item play "Piloto" --type episode --no-parse-query --pick-best-item
 emby-cli item play --id 123456 --player vlc --wait
 emby-cli item download "matrix (1999)" --pick-best-item
 emby-cli item download --id 123456 --method stream

@@ -18,12 +18,15 @@ import requests
 
 from emby_cli.client import EmbyClient
 from emby_cli.constants import SEARCH_ITEM_TYPES, SHOW_ITEM_FIELDS
+from emby_cli.media_sort import sort_media_items
 from emby_cli.output import Stats, print_done, print_download, print_error, print_skip
 from emby_cli.resolve import (
     classify_resolution,
     item_label,
     item_video_width,
+    parse_title_line,
     resolve_title_items,
+    sort_for_display,
 )
 from emby_cli.util import (
     build_dest_path,
@@ -64,6 +67,7 @@ class ItemListingQuery:
     """Parameters for a server-side item listing request."""
 
     query: str = ""
+    title_line: str | None = None
     parent_id: str | None = None
     item_types: str = SEARCH_ITEM_TYPES
     year: int | None = None
@@ -100,6 +104,81 @@ def item_matches_type(item: dict, raw_type: str | None) -> bool:
     return item.get("Type") == normalized
 
 
+def split_listing_search_query(
+    query: str,
+    *,
+    year: int | None = None,
+) -> tuple[str, int | None]:
+    """Map title-line QUERY syntax to Emby ``SearchTerm`` + ``Years`` filter."""
+    text = query.strip()
+    if not text:
+        return "", year
+    title, season, episode, parsed_year = parse_title_line(text)
+    if season is not None or episode is not None:
+        return title, year
+    if parsed_year is None:
+        return text, year
+    return title, year if year is not None else parsed_year
+
+
+def _listing_includes_episodes(item_types: str) -> bool:
+    return "Episode" in {part.strip() for part in item_types.split(",") if part.strip()}
+
+
+def episodes_for_title_line(
+    client: EmbyClient,
+    title_line: str,
+    *,
+    year: int | None = None,
+    item_types: str = SEARCH_ITEM_TYPES,
+) -> list[dict]:
+    """Resolve ``Series Sxx[Eyy]`` syntax to episode rows for listings."""
+    title, season, episode, parsed_year = parse_title_line(title_line.strip())
+    if season is None or not _listing_includes_episodes(item_types):
+        return []
+
+    effective_year = year if year is not None else parsed_year
+    series_results = client.search_items(title, item_types="Series")
+    if not series_results:
+        return []
+
+    candidates = series_results
+    if effective_year is not None:
+        year_matches = [
+            series for series in series_results if series.get("ProductionYear") == effective_year
+        ]
+        if not year_matches:
+            return []
+        candidates = year_matches
+
+    episodes: list[dict] = []
+    for series in candidates:
+        rows = client.get_show_episodes(series["Id"], season=season)
+        if episode is not None:
+            rows = [row for row in rows if row.get("IndexNumber") == episode]
+        series_name = series.get("Name")
+        for row in rows:
+            enriched = dict(row)
+            if series_name and not enriched.get("SeriesName"):
+                enriched["SeriesName"] = series_name
+            episodes.append(enriched)
+    return episodes
+
+
+def _apply_listing_sort_and_limit(
+    items: list[dict],
+    listing: ItemListingQuery,
+) -> tuple[list[dict], int]:
+    if listing.order_by:
+        ordered = sort_media_items(items, listing.order_by, desc=listing.desc)
+    else:
+        ordered = sort_for_display(items)
+    total = len(ordered)
+    if listing.api_limit is not None:
+        ordered = ordered[: listing.api_limit]
+    return ordered, total
+
+
 def build_item_listing_query(
     *,
     query: str = "",
@@ -110,13 +189,41 @@ def build_item_listing_query(
     order_by: str | None = None,
     desc: bool = False,
     when_unsorted: ListingDefault = "catalog",
+    parse_query: bool = False,
 ) -> ItemListingQuery:
     """Build a listing query delegated to Emby (filters, sort, pagination)."""
+    text = query.strip()
+    if not parse_query:
+        return ItemListingQuery(
+            query=text,
+            parent_id=parent_id,
+            item_types=item_types_for_api(raw_type),
+            year=year,
+            api_limit=None if count is None else count,
+            order_by=order_by,
+            desc=desc,
+            when_unsorted=when_unsorted,
+        )
+    title, season, _episode, parsed_year = parse_title_line(text)
+    effective_year = year if year is not None else parsed_year
+    if season is not None:
+        return ItemListingQuery(
+            query=title,
+            title_line=text,
+            parent_id=parent_id,
+            item_types=item_types_for_api(raw_type),
+            year=effective_year,
+            api_limit=None if count is None else count,
+            order_by=order_by,
+            desc=desc,
+            when_unsorted=when_unsorted,
+        )
+    search_query, effective_year = split_listing_search_query(text, year=year)
     return ItemListingQuery(
-        query=query,
+        query=search_query,
         parent_id=parent_id,
         item_types=item_types_for_api(raw_type),
-        year=year,
+        year=effective_year,
         api_limit=None if count is None else count,
         order_by=order_by,
         desc=desc,
@@ -131,6 +238,14 @@ def fetch_item_listing(
     use_cache: bool = True,
 ) -> tuple[list[dict], int]:
     """Fetch item rows from Emby using one listing query builder."""
+    if listing.title_line and listing.parent_id is None:
+        items = episodes_for_title_line(
+            client,
+            listing.title_line,
+            year=listing.year,
+            item_types=listing.item_types,
+        )
+        return _apply_listing_sort_and_limit(items, listing)
     return client.items.list_items(
         query=listing.query,
         parent_id=listing.parent_id,
@@ -186,6 +301,7 @@ def resolve_item(
     item_id: str | None = None,
     raw_type: str | None = None,
     use_cache: bool = True,
+    parse_query: bool = False,
 ) -> dict:
     """Resolve one media item or raise an error carrying candidate rows."""
     item_types = item_types_for_api(raw_type)
@@ -211,11 +327,31 @@ def resolve_item(
         matches = _id_matches(catalog, item_id)
         selector = f"id '{item_id}'"
     elif query:
-        matches, _total = client.items.search(
-            query,
-            item_types=item_types,
-            use_cache=use_cache,
-        )
+        if parse_query:
+            _title, season, _episode, _parsed_year = parse_title_line(query.strip())
+            if season is not None and _listing_includes_episodes(item_types):
+                _title, _season, _episode, parsed_year = parse_title_line(query.strip())
+                matches = episodes_for_title_line(
+                    client,
+                    query.strip(),
+                    year=parsed_year,
+                    item_types=item_types,
+                )
+            else:
+                search_query, search_year = split_listing_search_query(query)
+                matches, _total = client.items.search(
+                    search_query,
+                    item_types=item_types,
+                    year=search_year,
+                    use_cache=use_cache,
+                )
+        else:
+            matches, _total = client.items.search(
+                query.strip(),
+                item_types=item_types,
+                year=None,
+                use_cache=use_cache,
+            )
         selector = f"query '{query}'"
     else:
         raise ItemResolutionError("provide a media item QUERY or --id")

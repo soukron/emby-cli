@@ -439,6 +439,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Bypass disk cache read and refresh it from API",
     )
+    it_search.add_argument(
+        "--parse-query",
+        action="store_true",
+        help="Interpret QUERY as title-line syntax (e.g. 'Movie (1999)', 'Show S01E01')",
+    )
 
     it_list = it_sub.add_parser(
         "list",
@@ -482,6 +487,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Bypass disk cache read and refresh it from API",
     )
+    it_show.add_argument(
+        "--parse-query",
+        action="store_true",
+        help="Interpret QUERY as title-line syntax (e.g. 'Movie (1999)', 'Show S01E01')",
+    )
 
     it_play = it_sub.add_parser("play", help="Play a media item in an external player")
     it_play.add_argument("query", nargs="?", metavar="QUERY")
@@ -514,6 +524,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Bypass disk cache read and refresh it from API",
     )
+    it_play.add_argument(
+        "--no-parse-query",
+        action="store_true",
+        help="Resolve QUERY via Emby search instead of title-line parsing",
+    )
 
     it_download = it_sub.add_parser("download", help="Download media items")
     it_download.add_argument("query", nargs="?", metavar="QUERY")
@@ -542,6 +557,11 @@ def build_parser() -> argparse.ArgumentParser:
         env=env,
         default_output=DEFAULT_OUTPUT,
         force_help=_FORCE_HELP,
+    )
+    it_download.add_argument(
+        "--no-parse-query",
+        action="store_true",
+        help="Resolve QUERY via Emby search instead of title-line parsing",
     )
 
     dl = sub.add_parser(

@@ -120,7 +120,10 @@ def _resolve_from_args(
     use_cache: bool,
     query: str | None = None,
     pick_best: bool = False,
+    parse_query: bool | None = None,
 ) -> dict:
+    if parse_query is None:
+        parse_query = getattr(args, "parse_query", False) is True
     try:
         return resolve_item(
             client,
@@ -128,6 +131,7 @@ def _resolve_from_args(
             item_id=item_selector_id(args),
             raw_type=_text(args, "item_type"),
             use_cache=use_cache,
+            parse_query=parse_query,
         )
     except ItemResolutionError as exc:
         if pick_best and exc.matches:
@@ -178,6 +182,19 @@ def _cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
             raw_type=_text(args, "item_type"),
             wait=wait,
         )
+        if rc != 0:
+            raise SystemExit(rc)
+        return
+
+    if getattr(args, "no_parse_query", False):
+        item = _resolve_from_args(
+            client,
+            args,
+            use_cache=not getattr(args, "no_cache", False),
+            pick_best=pick_best,
+            parse_query=False,
+        )
+        rc = play_one_item(client, item, player_cmd, wait=wait)
         if rc != 0:
             raise SystemExit(rc)
         return
@@ -235,6 +252,28 @@ def _cmd_download(client: EmbyClient, args: argparse.Namespace) -> None:
         print_done(stats)
         raise SystemExit(stats.exit_code())
 
+    if getattr(args, "no_parse_query", False):
+        item = _resolve_from_args(
+            client,
+            args,
+            use_cache=True,
+            pick_best=pick_best,
+            parse_query=False,
+        )
+        stats = download_items(
+            client,
+            [item],
+            opts.output,
+            method=opts.method,
+            force=args.force,
+            throttle=opts.throttle,
+            dry_run=opts.dry_run,
+            mirror_path=opts.mirror_path,
+            path_strip=opts.path_strip,
+        )
+        print_done(stats)
+        raise SystemExit(stats.exit_code())
+
     items = _resolve_title_from_args(
         client,
         args,
@@ -270,6 +309,7 @@ def _cmd_item_listing(
         count=count,
         order_by=_text(args, "order_by"),
         desc=getattr(args, "desc", False) is True,
+        parse_query=getattr(args, "parse_query", False) is True,
     )
     shown, available = fetch_item_listing(
         client,
@@ -294,7 +334,12 @@ def _cmd_list(client: EmbyClient, args: argparse.Namespace) -> None:
 
 
 def _cmd_show(client: EmbyClient, args: argparse.Namespace) -> None:
-    item = _resolve_from_args(client, args, use_cache=True)
+    item = _resolve_from_args(
+        client,
+        args,
+        use_cache=True,
+        parse_query=getattr(args, "parse_query", False) is True,
+    )
     _print_media_item(item)
 
 

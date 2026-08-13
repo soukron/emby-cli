@@ -64,6 +64,26 @@ def test_print_item_choices_media(capsys):
     assert "Movie" in out
 
 
+def test_print_item_choices_shows_series_for_episodes(capsys):
+    print_item_choices([
+        {
+            "Id": "1",
+            "Name": "Pilot",
+            "Type": "Episode",
+            "ProductionYear": 2019,
+            "SeriesName": "Californication",
+            "ParentIndexNumber": 1,
+            "IndexNumber": 1,
+            "Width": 1920,
+            "Size": 1024,
+        },
+    ])
+    out = capsys.readouterr().out
+    assert "Series" in out
+    assert "Californication" in out
+    assert "S01E01 Pilot" in out
+
+
 def test_print_library_choices(capsys):
     print_library_choices([
         {

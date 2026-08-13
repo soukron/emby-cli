@@ -17,7 +17,10 @@ MEDIA_ITEM_ORDER_BY = ("year", "name", "id", "release-date", "added", "resolutio
 SHOW_LIBRARY_ITEM_TYPES = "Movie,Episode,Audio"
 # Default --count for search output when N is not specified.
 SEARCH_COUNT_DEFAULT = 30
-ITEM_FIELDS = "Path,MediaSources,MediaStreams,Size,RunTimeTicks,ProductionYear,PremiereDate,DateCreated"
+ITEM_FIELDS = (
+    "Path,MediaSources,MediaStreams,Size,RunTimeTicks,ProductionYear,PremiereDate,"
+    "DateCreated,SeriesName"
+)
 # Extra fields for `show` detail view.
 SHOW_ITEM_FIELDS = (
     ITEM_FIELDS

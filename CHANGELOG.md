@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added
+
+- `--parse-query` on `item search` and `item show` to interpret title-line syntax
+  (`Movie (1999)`, `Show S01E01`). Default is strict Emby `SearchTerm` search.
+- `--no-parse-query` on `item play` and `item download` to resolve QUERY via Emby
+  search instead of title-line parsing (default: parse for play/download).
+- `Series` column in item search tables when results include episodes.
+
+### Changed
+
+- `item search`, `item list`, and `item show` no longer parse QUERY by default;
+  use `--parse-query` for structured title lines or `--year` to narrow results.
+
 ## 0.7.0
 
 Added:

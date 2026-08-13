@@ -47,6 +47,62 @@ def test_item_search_output_and_count(capsys):
     )
 
 
+def test_item_search_strict_by_default(capsys):
+    client = _client()
+    matrix = {"Id": "100", "Name": "The Matrix", "Type": "Movie", "ProductionYear": 1999}
+    with patch.object(client.items, "list_items", return_value=([matrix], 1)) as list_items:
+        cmd_item(client, _args("search", "Matrix (1999)", "--type", "movie"))
+    assert "The Matrix" in capsys.readouterr().out
+    list_items.assert_called_once_with(
+        query="Matrix (1999)",
+        parent_id=None,
+        item_types="Movie",
+        year=None,
+        limit=30,
+        sort_by=None,
+        desc=False,
+        when_unsorted="catalog",
+        use_cache=True,
+    )
+
+
+def test_item_search_parses_title_line_year_with_flag(capsys):
+    client = _client()
+    matrix = {"Id": "100", "Name": "The Matrix", "Type": "Movie", "ProductionYear": 1999}
+    with patch.object(client.items, "list_items", return_value=([matrix], 1)) as list_items:
+        cmd_item(client, _args("search", "Matrix (1999)", "--type", "movie", "--parse-query"))
+    assert "The Matrix" in capsys.readouterr().out
+    list_items.assert_called_once_with(
+        query="Matrix",
+        parent_id=None,
+        item_types="Movie",
+        year=1999,
+        limit=30,
+        sort_by=None,
+        desc=False,
+        when_unsorted="catalog",
+        use_cache=True,
+    )
+
+
+def test_item_search_parses_series_episode_line_with_flag(capsys):
+    client = _client()
+    episode = {
+        "Id": "e1",
+        "Name": "Pilot",
+        "Type": "Episode",
+        "ProductionYear": 2007,
+    }
+    with patch(
+        "emby_cli.commands.item.fetch_item_listing",
+        return_value=([episode], 1),
+    ) as fetch:
+        cmd_item(client, _args("search", "Californication S01E01", "--parse-query"))
+    assert "Pilot" in capsys.readouterr().out
+    listing = fetch.call_args.args[1]
+    assert listing.title_line == "Californication S01E01"
+
+
 def test_item_list_shows_all_without_count_cap(capsys):
     client = _client()
     items = [
