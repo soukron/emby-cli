@@ -510,3 +510,33 @@ def play_item_ids(
     if errors:
         return last_rc if last_rc else 1
     return 0
+
+
+def play_items(
+    client: EmbyClient,
+    items: list[dict],
+    player_cmd: list[str],
+    *,
+    wait: bool = False,
+    show_progress: bool = False,
+) -> int:
+    """Play *items* sequentially. Return process exit code."""
+    total = len(items)
+    errors = 0
+    last_rc = 0
+    show_idx = show_progress or total > 1
+    for idx, item in enumerate(items, 1):
+        rc = play_one_item(
+            client,
+            item,
+            player_cmd,
+            wait=wait,
+            idx=idx if show_idx else None,
+            total=total if show_idx else None,
+        )
+        if rc != 0:
+            errors += 1
+            last_rc = rc
+    if errors:
+        return last_rc if last_rc else 1
+    return 0

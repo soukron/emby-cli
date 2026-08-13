@@ -85,6 +85,12 @@ def test_validate_collection_download_requires_selector():
     )) == "provide exactly one collection QUERY or --id"
 
 
+def test_validate_collection_play_requires_selector():
+    assert validate_collection_args(argparse.Namespace(
+        collection_command="play", query=None, id=None, collection_id=None,
+    )) == "provide exactly one collection QUERY or --id"
+
+
 def test_validate_collection_set_rejects_unknown_field():
     assert validate_collection_args(argparse.Namespace(
         collection_command="set", query=None, id="1234", collection_id=None,
@@ -504,6 +510,12 @@ def test_validate_item_download_requires_selector():
 def test_validate_library_download_requires_selector():
     assert validate_library_args(argparse.Namespace(
         library_command="download", query=None, id=None, library_id=None,
+    )) == "provide exactly one library QUERY or --id"
+
+
+def test_validate_library_play_requires_selector():
+    assert validate_library_args(argparse.Namespace(
+        library_command="play", query=None, id=None, library_id=None,
     )) == "provide exactly one library QUERY or --id"
 
 

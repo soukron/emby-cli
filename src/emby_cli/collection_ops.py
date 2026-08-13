@@ -9,7 +9,7 @@ import requests
 
 from emby_cli.client import EmbyClient
 from emby_cli.constants import DOWNLOADABLE_TYPES
-from emby_cli.item_ops import download_items
+from emby_cli.item_ops import download_items, play_items
 from emby_cli.output import Stats, print_section
 from emby_cli.util import safe_output_dir_name
 
@@ -292,4 +292,28 @@ def download_collection(
         show_single_progress=True,
         mirror_path=mirror_path,
         path_strip=path_strip,
+    )
+
+
+def play_collection(
+    client: EmbyClient,
+    collection: dict,
+    player_cmd: list[str],
+    *,
+    wait: bool = False,
+    show_section: bool = True,
+) -> int:
+    """Play every playable member in *collection* via ``item_ops``."""
+    name = collection.get("Name") or "?"
+    if show_section:
+        print_section(f"Collection: {name}")
+
+    targets = collection_downloadable_items(client, collection)
+    print(f"Found {len(targets)} items in '{name}'")
+    return play_items(
+        client,
+        targets,
+        player_cmd,
+        wait=wait,
+        show_progress=True,
     )

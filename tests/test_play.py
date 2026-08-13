@@ -64,3 +64,19 @@ def test_play_csv_continues_after_fetch_error(capsys):
     captured = capsys.readouterr()
     assert "fetching item bad" in captured.err
     assert "Playing: Ok" in captured.out
+
+
+def test_play_items_launches_each(capsys):
+    client = MagicMock()
+    items = [
+        {"Id": "1", "Name": "A", "Type": "Movie", "ProductionYear": 2001},
+        {"Id": "2", "Name": "B", "Type": "Episode", "ProductionYear": 2002},
+    ]
+    client.resolve_direct_stream_url.side_effect = ["http://u/1", "http://u/2"]
+    with patch.object(item_ops, "play_url", return_value=0) as play_url:
+        rc = item_ops.play_items(client, items, ["vlc"], wait=False, show_progress=True)
+    assert rc == 0
+    assert play_url.call_count == 2
+    out = capsys.readouterr().out
+    assert "[1/2] Playing: A" in out
+    assert "[2/2] Playing: B" in out

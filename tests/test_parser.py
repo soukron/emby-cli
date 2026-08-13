@@ -538,6 +538,25 @@ def test_library_download_parses_id_and_output():
     assert args.output == "/data"
 
 
+def test_library_play_parses_player():
+    args = build_parser().parse_args([
+        "library", "play", "Movies", "--player", "vlc",
+    ])
+    assert args.library_command == "play"
+    assert args.query == "Movies"
+    assert args.player == "vlc"
+    assert not hasattr(args, "wait")
+
+
+def test_collection_play_parses_id():
+    args = build_parser().parse_args([
+        "collection", "play", "--id", "1234", "--player", "mpv",
+    ])
+    assert args.collection_command == "play"
+    assert args.id == "1234"
+    assert args.player == "mpv"
+
+
 def test_download_mirror_path_flag():
     args = build_parser().parse_args([
         "item", "download", "Matrix", "--mirror-path",

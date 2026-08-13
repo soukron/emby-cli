@@ -8,7 +8,7 @@ from emby_cli.client import EmbyClient
 from emby_cli.commands.show import _print_library
 from emby_cli.constants import SEARCH_COUNT_DEFAULT, SHOW_LIBRARY_ITEM_TYPES
 from emby_cli.download_ops import library_rows
-from emby_cli.item_ops import DownloadOpts
+from emby_cli.item_ops import DownloadOpts, find_player
 from emby_cli.library_ops import (
     LIBRARY_TYPE_ALIASES,
     LibraryResolutionError,
@@ -16,6 +16,7 @@ from emby_cli.library_ops import (
     filter_libraries_by_type,
     library_selector_id,
     normalize_library_type,
+    play_library,
     resolve_library,
 )
 from emby_cli.output import print_done, print_error
@@ -55,7 +56,7 @@ def validate_library_args(args: argparse.Namespace) -> str | None:
         library_id = library_selector_id(args)
         if bool(query) == bool(library_id):
             return "provide exactly one library QUERY or --id"
-    elif command == "download":
+    elif command in {"download", "play"}:
         query = _text(args, "query")
         library_id = library_selector_id(args)
         if bool(query) == bool(library_id):
@@ -220,6 +221,25 @@ def _cmd_download(client: EmbyClient, args: argparse.Namespace) -> None:
     raise SystemExit(stats.exit_code())
 
 
+def _cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
+    try:
+        player_cmd = find_player(getattr(args, "player", None))
+    except RuntimeError as exc:
+        print_error(str(exc))
+        raise SystemExit(1) from None
+
+    lib = _resolve_from_args(client, args, use_cache=True)
+    rc = play_library(
+        client,
+        lib,
+        player_cmd,
+        wait=True,
+        show_section=True,
+    )
+    if rc != 0:
+        raise SystemExit(rc)
+
+
 def cmd_library(client: EmbyClient, args: argparse.Namespace) -> None:
     """Validate and dispatch a nested library command."""
     error = validate_library_args(args)
@@ -232,5 +252,6 @@ def cmd_library(client: EmbyClient, args: argparse.Namespace) -> None:
         "list": _cmd_list,
         "show": _cmd_show,
         "download": _cmd_download,
+        "play": _cmd_play,
     }
     handlers[args.library_command](client, args)

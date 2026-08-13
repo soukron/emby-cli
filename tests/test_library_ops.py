@@ -14,6 +14,7 @@ from emby_cli.library_ops import (
     filter_libraries_by_type,
     library_matches_type,
     normalize_library_type,
+    play_library,
     resolve_library,
 )
 from emby_cli.output import Stats
@@ -83,3 +84,23 @@ def test_download_library_uses_named_output_subdir():
             show_section=False,
         )
     assert download_items.call_args.args[2] == Path("/out/Películas")
+
+
+def test_play_library_delegates_to_play_items():
+    client = _client()
+    library = LIBRARIES[0]
+    items = [{"Id": "1", "Name": "Film", "Type": "Movie"}]
+    with (
+        patch.object(client, "get_all_items", return_value=items),
+        patch("emby_cli.library_ops.play_items", return_value=0) as play_items,
+    ):
+        rc = play_library(
+            client,
+            library,
+            ["vlc"],
+            wait=True,
+            show_section=False,
+        )
+    assert rc == 0
+    assert play_items.call_args.args[1] == items
+    assert play_items.call_args.kwargs["wait"] is True

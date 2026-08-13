@@ -31,6 +31,8 @@ Added:
   downloads write into `output/<name>/`; items use flat filenames by default.
 - `--mirror-path` and `EMBY_PATH_STRIP` / `--path-strip` to recreate server
   subdirectories under the output folder when needed.
+- `library play` and `collection play` to launch an external player for every
+  playable item in a library view or collection.
 - Legacy top-level `download` remains as a thin wrapper over the new helpers.
 
 Changed:

@@ -98,6 +98,26 @@ def _add_download_options(
     )
 
 
+def _add_play_options(
+    parser: argparse.ArgumentParser,
+    *,
+    env,
+    implicit_wait: bool = False,
+) -> None:
+    parser.add_argument(
+        "--player",
+        default=env("EMBY_PLAYER"),
+        help="External player command or path (env: EMBY_PLAYER), e.g. vlc or "
+             "/Applications/VLC.app/Contents/MacOS/VLC",
+    )
+    if not implicit_wait:
+        parser.add_argument(
+            "--wait",
+            action="store_true",
+            help="Block until the player process exits (default: detach and return)",
+        )
+
+
 def build_parser() -> argparse.ArgumentParser:
     env = os.environ.get
 
@@ -207,6 +227,14 @@ def build_parser() -> argparse.ArgumentParser:
         default_output=DEFAULT_OUTPUT,
         force_help=_FORCE_HELP,
     )
+
+    col_play = col_sub.add_parser(
+        "play",
+        help="Play all playable items in a collection",
+    )
+    col_play.add_argument("query", nargs="?", metavar="QUERY")
+    col_play.add_argument("--id", help="Collection ID or unique ID prefix")
+    _add_play_options(col_play, env=env, implicit_wait=True)
 
     col_create = col_sub.add_parser("create", help="Create a collection")
     col_create.add_argument("name", metavar="NAME")
@@ -340,6 +368,14 @@ def build_parser() -> argparse.ArgumentParser:
         default_output=DEFAULT_OUTPUT,
         force_help=_FORCE_HELP,
     )
+
+    lib_play = lib_sub.add_parser(
+        "play",
+        help="Play all playable items in a library",
+    )
+    lib_play.add_argument("query", nargs="?", metavar="QUERY")
+    lib_play.add_argument("--id", help="Library ID or unique ID prefix")
+    _add_play_options(lib_play, env=env, implicit_wait=True)
 
     it = sub.add_parser("item", help=_help_by_name["item"])
     it.add_argument(

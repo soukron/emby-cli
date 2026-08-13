@@ -103,6 +103,19 @@ def test_library_download_delegates_to_library_ops():
     download.assert_called_once()
 
 
+def test_library_play_delegates_to_library_ops():
+    client = _client()
+    library = {"Id": "100", "Name": "Movies", "CollectionType": "movies"}
+    with (
+        patch("emby_cli.commands.library.resolve_library", return_value=library),
+        patch("emby_cli.commands.library.find_player", return_value=["vlc"]),
+        patch("emby_cli.commands.library.play_library", return_value=0) as play,
+    ):
+        cmd_library(client, _args("play", "Movies", "--player", "vlc"))
+    play.assert_called_once()
+    assert play.call_args.kwargs["wait"] is True
+
+
 def test_library_search_filters_by_type(capsys):
     client = _client()
     libraries = [

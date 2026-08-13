@@ -17,6 +17,7 @@ from emby_cli.collection_ops import (
     match_collections,
     parse_item_refs,
     parse_set_assignments,
+    play_collection,
     resolve_collection,
     resolve_collection_members,
 )
@@ -177,3 +178,25 @@ def test_download_collection_uses_named_output_subdir():
             show_section=False,
         )
     assert download_items.call_args.args[2] == Path("/out/Star Wars")
+
+
+def test_play_collection_delegates_to_play_items():
+    client = _client()
+    collection = {"Id": "10", "Name": "Star Wars", "Type": "BoxSet"}
+    items = [{"Id": "1", "Name": "Film", "Type": "Movie"}]
+    with (
+        patch(
+            "emby_cli.collection_ops.collection_downloadable_items",
+            return_value=items,
+        ),
+        patch("emby_cli.collection_ops.play_items", return_value=0) as play_items,
+    ):
+        rc = play_collection(
+            client,
+            collection,
+            ["vlc"],
+            wait=False,
+            show_section=False,
+        )
+    assert rc == 0
+    assert play_items.call_args.args[1] == items

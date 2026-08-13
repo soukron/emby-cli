@@ -96,6 +96,8 @@ emby-cli collection show "Star Wars"
 emby-cli collection show --id 1234
 emby-cli collection download "Star Wars" --dry-run
 emby-cli collection download --id 1234 -o ./downloads
+emby-cli collection play "Star Wars" --player vlc
+emby-cli collection play --id 1234
 ```
 
 `collection download` resolves the collection and downloads each member
@@ -161,6 +163,8 @@ emby-cli library show --id 614156
 emby-cli library --id 614156 show
 emby-cli library download "Películas" --dry-run
 emby-cli library download --id 614156 -o ./downloads
+emby-cli library play "Películas" --player vlc
+emby-cli library play --id 614156
 ```
 
 `library list` is an alias for `library search --count all`. `--type` filters by

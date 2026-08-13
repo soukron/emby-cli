@@ -16,11 +16,12 @@ from emby_cli.collection_ops import (
     download_collection,
     parse_item_refs,
     parse_set_assignments,
+    play_collection,
     resolve_collection,
     resolve_collection_members,
 )
 from emby_cli.constants import SEARCH_COUNT_DEFAULT
-from emby_cli.item_ops import DownloadOpts
+from emby_cli.item_ops import DownloadOpts, find_player
 from emby_cli.output import Stats, print_done, print_error
 from emby_cli.resolve import sort_for_display
 
@@ -85,7 +86,7 @@ def validate_collection_args(args: argparse.Namespace) -> str | None:
             parse_set_assignments(assignments)
         except ValueError as exc:
             return str(exc)
-    elif command in {"show", "delete", "rename", "add-item", "remove-item", "download"}:
+    elif command in {"show", "delete", "rename", "add-item", "remove-item", "download", "play"}:
         query = _text(args, "query")
         collection_id = collection_selector_id(args)
         if bool(query) == bool(collection_id):
@@ -329,6 +330,25 @@ def _cmd_download(client: EmbyClient, args: argparse.Namespace) -> None:
     raise SystemExit(stats.exit_code())
 
 
+def _cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
+    try:
+        player_cmd = find_player(getattr(args, "player", None))
+    except RuntimeError as exc:
+        print_error(str(exc))
+        raise SystemExit(1) from None
+
+    collection = _resolve_from_args(client, args, use_cache=True)
+    rc = play_collection(
+        client,
+        collection,
+        player_cmd,
+        wait=True,
+        show_section=True,
+    )
+    if rc != 0:
+        raise SystemExit(rc)
+
+
 def _cmd_create(client: EmbyClient, args: argparse.Namespace) -> None:
     item_ids: list[str] = []
     errors = 0
@@ -440,6 +460,7 @@ def cmd_collection(client: EmbyClient, args: argparse.Namespace) -> None:
         "list": _cmd_list,
         "show": _cmd_show,
         "download": _cmd_download,
+        "play": _cmd_play,
         "create": _cmd_create,
         "delete": _cmd_delete,
         "rename": _cmd_rename,

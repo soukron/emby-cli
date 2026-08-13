@@ -7,7 +7,7 @@ from pathlib import Path
 from emby_cli.client import EmbyClient
 from emby_cli.constants import DOWNLOADABLE_TYPES
 from emby_cli.download_ops import find_library, match_libraries
-from emby_cli.item_ops import download_items
+from emby_cli.item_ops import download_items, play_items
 from emby_cli.output import Stats, print_section
 from emby_cli.util import safe_output_dir_name
 
@@ -136,4 +136,27 @@ def download_library(
         show_single_progress=True,
         mirror_path=mirror_path,
         path_strip=path_strip,
+    )
+
+
+def play_library(
+    client: EmbyClient,
+    library: dict,
+    player_cmd: list[str],
+    *,
+    wait: bool = False,
+    show_section: bool = True,
+) -> int:
+    """Play every playable item in *library* via ``item_ops``."""
+    if show_section:
+        print_section(f"Library: {library['Name']}")
+
+    targets = library_downloadable_items(client, library)
+    print(f"Found {len(targets)} items in '{library['Name']}'")
+    return play_items(
+        client,
+        targets,
+        player_cmd,
+        wait=wait,
+        show_progress=True,
     )

@@ -119,6 +119,19 @@ def test_collection_download_delegates_to_collection_ops():
     download.assert_called_once()
 
 
+def test_collection_play_delegates_to_collection_ops():
+    client = _client()
+    collection = {"Id": "10", "Name": "Saga", "Type": "BoxSet"}
+    with (
+        patch("emby_cli.commands.collection.resolve_collection", return_value=collection),
+        patch("emby_cli.commands.collection.find_player", return_value=["vlc"]),
+        patch("emby_cli.commands.collection.play_collection", return_value=0) as play,
+    ):
+        cmd_collection(client, _args("play", "Saga", "--player", "vlc"))
+    play.assert_called_once()
+    assert play.call_args.kwargs["wait"] is True
+
+
 def test_collection_create_with_no_members(capsys):
     client = _client()
     with patch.object(

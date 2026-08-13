@@ -130,6 +130,7 @@ cli.main
 | `--item` / `--library` / embedded QUERY | `mode_args.py` + command modules |
 | Title-line resolution (`Movie (2010)`, `Show S01E02`) | `resolve.py` |
 | Download orchestration, skip, library match | `item_ops.py` (items), `library_ops.py` (libraries), `collection_ops.py` (collections) |
+| Playback orchestration | `item_ops.py` (`play_items`, …), `library_ops.play_library`, `collection_ops.play_collection` |
 | Library name/id matching (legacy search/show) | `download_ops.py` |
 | Collection/member resolution and CSV policy | `collection_ops.py` |
 | Library view resolution and type filters | `library_ops.py` |
@@ -309,11 +310,15 @@ Shared pattern (`mode_args.py`) for **`search`** and **`download`**:
   `--mirror-path` (recreate source subdirectories under the output folder).
   Optional `EMBY_PATH_STRIP` / `--path-strip` removes a server mount prefix first;
   if the prefix does not match, the last 2-3 path components heuristic is used.
+- `collection play` resolves one collection by QUERY or `--id`, lists playable
+  members (`Movie`, `Episode`, `Audio`, `Video`), and opens each DirectStream URL
+  via `item_ops.play_items`. Always waits for each player process to exit before
+  starting the next item. Supports `--player` and parent/subcommand `--id`.
 
 ### Libraries
 
 Read-only entity commands (`library list`, `library search`, `library show`) plus
-`library download`. Legacy `search --library`, `show --library`, and
+`library download` and `library play`. Legacy `search --library`, `show --library`, and
 `download --library` remain unchanged until a later migration.
 
 - `library list` lists every library view (alias of `library search --count all`).
@@ -330,6 +335,9 @@ Read-only entity commands (`library list`, `library search`, `library show`) plu
   Files land in `output/<library name>/` (flat by default; subdirectories when
   `--mirror-path` is set). Optional `EMBY_PATH_STRIP` / `--path-strip` removes a
   server mount prefix before mirroring.
+- `library play` resolves one library by QUERY or `--id`, lists playable items, and
+  opens each DirectStream URL via `item_ops.play_items`. Always waits for each
+  player process to exit before starting the next item. Supports `--player`.
 - No `create`, `rename`, `delete`, `set`, `add-item`, or `remove-item` for libraries.
 
 ### Media items
