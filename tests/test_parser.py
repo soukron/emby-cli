@@ -11,7 +11,8 @@ def test_build_parser_subcommands():
     parser = build_parser()
     subs = parser._subparsers._group_actions[0].choices
     assert set(subs) == {
-        "help", "login", "logout", "config", "collection", "download", "search", "show", "play", "version", "info",
+        "help", "login", "logout", "config", "collection", "library", "download",
+        "search", "show", "play", "version", "info",
     }
 
 
@@ -422,3 +423,28 @@ def test_collection_list_parses_order_by():
     assert args.order_by == "items"
     assert args.desc is True
     assert args.no_cache is True
+
+
+def test_library_show_query_and_id_forms():
+    parser = build_parser()
+    by_query = parser.parse_args(["library", "show", "Movies"])
+    by_id = parser.parse_args(["library", "show", "--id", "100"])
+    assert by_query.library_command == "show"
+    assert by_query.query == "Movies"
+    assert by_id.id == "100"
+
+
+def test_library_parent_id_before_show():
+    args = build_parser().parse_args(["library", "--id", "100", "show"])
+    assert args.library_command == "show"
+    assert args.library_id == "100"
+
+
+def test_library_list_parses_type_and_order_by():
+    args = build_parser().parse_args([
+        "library", "list", "--type", "movies", "--order-by", "items", "--desc",
+    ])
+    assert args.library_command == "list"
+    assert args.lib_type == "movies"
+    assert args.order_by == "items"
+    assert args.desc is True

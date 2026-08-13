@@ -141,7 +141,26 @@ Deleting the collection removes the virtual `BoxSet`, not its member media.
 Collection mutations require an Emby user or API key with permission to edit
 metadata (typically an administrator).
 
+### Libraries
 
+Browse Emby library views (Movies, TV, Music, …). A positional name is a
+case-insensitive substring; use `--id` when a name is ambiguous:
+
+```bash
+emby-cli library list
+emby-cli library list --type movies --order-by items --desc
+emby-cli library search
+emby-cli library search "pel" --count all
+emby-cli library show "Películas"
+emby-cli library show --id 614156
+emby-cli library --id 614156 show
+```
+
+`library list` is an alias for `library search --count all`. `--type` filters by
+library collection type (`movies`, `tvshows`, `music`, …). Detail output matches
+`show --library --id`.
+
+Legacy library browsing via `search --library` and `show --library` still works.
 
 ### Play
 
@@ -195,7 +214,8 @@ Library downloads match the library **name** (case-insensitive, unique match req
 ### Data cache
 
 Read-only commands (`search`, `show`, `play`, `info`, `collection list`,
-`collection search`, and `collection show`) use a JSON disk cache under
+`collection search`, `collection show`, `library list`, `library search`, and
+`library show`) use a JSON disk cache under
 `~/.cache/emby-cli/data` (or under `EMBY_CACHE_DIR/data`).
 
 - Default TTL: **600 seconds** (`EMBY_DATA_CACHE_TTL` to override).

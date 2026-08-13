@@ -18,11 +18,15 @@ Added:
   `name`, `short-name`, `display-order`, `overview`). Parent-level
   `--id` is supported before the subcommand.
 - `ItemsService.merge_and_update()` for safe GET→merge→POST metadata edits.
+- `library list`, `library search`, and `library show` for read-only library view
+  discovery and inspection (`/Users/{uid}/Views`). `library list` is an alias for
+  `library search --count all`. Supports `--type`, `--order-by`, and parent/subcommand
+  `--id` like collections. Legacy `search --library` / `show --library` unchanged.
 
 Changed:
 
-- `EmbyClient` now composes entity-oriented `ItemsService` and
-  `CollectionsService` modules while retaining one shared HTTP/auth/retry/cache
+- `EmbyClient` now composes entity-oriented `ItemsService`,
+  `CollectionsService`, and `LibrariesService` modules while retaining one shared HTTP/auth/retry/cache
   transport. This is the scaffold for future people, genre, studio, tag, and
   music-aware operations.
 - Metadata cache now supports exact invalidation. Collection mutations bypass

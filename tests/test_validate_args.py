@@ -10,6 +10,7 @@ import pytest
 from emby_cli.cli import main
 from emby_cli.commands.collection import validate_collection_args
 from emby_cli.commands.download import DownloadOpts, validate_download_args
+from emby_cli.commands.library import validate_library_args
 from emby_cli.commands.play import validate_play_args
 from emby_cli.commands.search import validate_search_args
 from emby_cli.mode_args import resolve_item_id
@@ -416,3 +417,31 @@ def test_main_collection_invalid_selector_skips_auth(capsys, monkeypatch):
     assert exc.value.code == 1
     open_client.assert_not_called()
     assert "exactly one collection QUERY or --id" in capsys.readouterr().err
+
+
+def test_validate_library_requires_exactly_one_selector_for_show():
+    assert validate_library_args(argparse.Namespace(
+        library_command="show", query=None, id=None, library_id=None,
+    )) == "provide exactly one library QUERY or --id"
+    assert validate_library_args(argparse.Namespace(
+        library_command="show", query="Movies", id="1", library_id=None,
+    )) == "provide exactly one library QUERY or --id"
+
+
+def test_validate_library_list_accepts_type_filter():
+    assert validate_library_args(argparse.Namespace(
+        library_command="list", lib_type="movies",
+    )) is None
+    assert validate_library_args(argparse.Namespace(
+        library_command="search", query="", count="all", lib_type="bad",
+    )) == "error: --type must be one of book, books, homevideo, homevideos, mixed, movie, movies, music, photo, photos, tv, tvshow, tvshows"
+
+
+def test_main_library_invalid_selector_skips_auth(capsys, monkeypatch):
+    monkeypatch.setattr("sys.argv", ["emby-cli", "library", "show"])
+    with patch("emby_cli.cli._open_client") as open_client:
+        with pytest.raises(SystemExit) as exc:
+            main()
+    assert exc.value.code == 1
+    open_client.assert_not_called()
+    assert "exactly one library QUERY or --id" in capsys.readouterr().err

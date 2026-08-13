@@ -12,6 +12,7 @@ from emby_cli.api.collections import (
     CollectionsService,
 )
 from emby_cli.api.items import ItemsService
+from emby_cli.api.libraries import LibrariesService
 from emby_cli.client import EmbyClient
 from emby_cli.data_cache import load_json, save_json
 
@@ -26,6 +27,7 @@ def test_client_exposes_services_sharing_transport():
     client = _client()
     assert isinstance(client.items, ItemsService)
     assert isinstance(client.collections, CollectionsService)
+    assert isinstance(client.libraries, LibrariesService)
     assert client.items.client is client
     assert client.collections.client is client
 

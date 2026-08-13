@@ -19,6 +19,7 @@ from tqdm import tqdm
 
 from emby_cli.api.collections import CollectionsService
 from emby_cli.api.items import ItemsService
+from emby_cli.api.libraries import LibrariesService
 from emby_cli.auth_cache import (
     AuthCacheEntry,
     clear_auth_cache,
@@ -134,6 +135,7 @@ class EmbyClient:
         self.session = requests.Session()
         self.items = ItemsService(self)
         self.collections = CollectionsService(self)
+        self.libraries = LibrariesService(self)
         ver = _client_version()
         self.session.headers.update({
             "User-Agent": f"{CLIENT_NAME}/{ver}",

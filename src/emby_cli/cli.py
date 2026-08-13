@@ -19,6 +19,7 @@ from emby_cli.commands.config import cmd_config
 from emby_cli.commands.download import cmd_download, validate_download_args
 from emby_cli.commands.help import COMMAND_SUMMARIES, cmd_help
 from emby_cli.commands.info import cmd_info
+from emby_cli.commands.library import cmd_library, validate_library_args
 from emby_cli.commands.login import cmd_login
 from emby_cli.commands.logout import cmd_logout
 from emby_cli.commands.play import cmd_play, validate_play_args
@@ -185,6 +186,72 @@ def build_parser() -> argparse.ArgumentParser:
             metavar="ID[,ID...]",
             help="Movie ID(s); repeatable and CSV-aware",
         )
+
+    lib = sub.add_parser("library", help=_help_by_name["library"])
+    lib.add_argument(
+        "--id",
+        dest="library_id",
+        help="Library ID or unique ID prefix (may appear before the subcommand)",
+    )
+    lib_sub = lib.add_subparsers(dest="library_command", required=True)
+
+    lib_search = lib_sub.add_parser("search", help="Search libraries")
+    lib_search.add_argument("query", nargs="?", metavar="QUERY")
+    lib_search.add_argument(
+        "--count",
+        "-n",
+        default=str(SEARCH_COUNT_DEFAULT),
+        metavar="N|all",
+        help=f"Max results (default: {SEARCH_COUNT_DEFAULT}); use 'all' for every result",
+    )
+    lib_search.add_argument(
+        "--type",
+        dest="lib_type",
+        metavar="TYPE",
+        help="Filter by library collection type (e.g. movies, tvshows, music)",
+    )
+    lib_search.add_argument(
+        "--order-by",
+        choices=["name", "id", "items"],
+        default=None,
+    )
+    lib_search.add_argument("--desc", action="store_true")
+    lib_search.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass disk cache read and refresh it from API",
+    )
+
+    lib_list = lib_sub.add_parser(
+        "list",
+        help="List all libraries (alias for search --count all)",
+    )
+    lib_list.add_argument(
+        "--type",
+        dest="lib_type",
+        metavar="TYPE",
+        help="Filter by library collection type (e.g. movies, tvshows, music)",
+    )
+    lib_list.add_argument(
+        "--order-by",
+        choices=["name", "id", "items"],
+        default=None,
+    )
+    lib_list.add_argument("--desc", action="store_true")
+    lib_list.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass disk cache read and refresh it from API",
+    )
+
+    lib_show = lib_sub.add_parser("show", help="Show a library and recent items")
+    lib_show.add_argument("query", nargs="?", metavar="QUERY")
+    lib_show.add_argument("--id", help="Library ID or unique ID prefix")
+    lib_show.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass disk cache read and refresh it from API",
+    )
 
     dl = sub.add_parser(
         "download",
@@ -464,6 +531,8 @@ def _open_client(args: argparse.Namespace) -> EmbyClient:
 def _validate_command_args(command: str, args: argparse.Namespace) -> str | None:
     if command == "collection":
         return validate_collection_args(args)
+    if command == "library":
+        return validate_library_args(args)
     if command == "search":
         return validate_search_args(args)
     if command == "download":
@@ -511,6 +580,7 @@ def main() -> None:
     client = _open_client(args)
     commands = {
         "collection": cmd_collection,
+        "library": cmd_library,
         "download": cmd_download,
         "search": cmd_search,
         "play": cmd_play,

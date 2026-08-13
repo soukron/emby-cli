@@ -36,7 +36,8 @@ CLI to **search**, **inspect** (`show`), **play**, **download/backup** original 
 │   ├── client.py           # EmbyClient: HTTP, auth, browse, download/HLS
 │   ├── api/                # Entity services sharing the EmbyClient transport
 │   │   ├── items.py        # Generic item list/get/update/delete
-│   │   └── collections.py  # BoxSet CRUD and membership endpoints
+│   │   ├── collections.py  # BoxSet CRUD and membership endpoints
+│   │   └── libraries.py    # Library view catalog (/Users/{uid}/Views)
 │   ├── auth_cache.py       # auth.json contexts (kubeconfig-style)
 │   ├── data_cache.py       # JSON cache for read-only metadata calls
 │   ├── credentials.py      # resolve server / user / password
@@ -44,6 +45,7 @@ CLI to **search**, **inspect** (`show`), **play**, **download/backup** original 
 │   ├── resolve.py          # title lines, pick_best, choice tables
 │   ├── download_ops.py     # download loop, skip, library matching
 │   ├── collection_ops.py   # collection/member resolution + CSV validation
+│   ├── library_ops.py      # library view resolution + type filters
 │   ├── output.py           # stdout/stderr messages + Stats / exit codes
 │   ├── util.py             # paths, sizes, skip, ffmpeg remux
 │   ├── constants.py        # retries, types, field lists, CLIENT_NAME
@@ -118,7 +120,7 @@ cli.main
 | Concern | Primary modules |
 |---------|-----------------|
 | HTTP transport, retries, auth, browse, binary/HLS download | `client.py` |
-| Generic item API + collection API | `api/items.py`, `api/collections.py` |
+| Generic item API + entity services | `api/items.py`, `api/collections.py`, `api/libraries.py` |
 | Session store on disk | `auth_cache.py` |
 | Metadata cache on disk | `data_cache.py` |
 | Resolving server/user/password from flags/env/TTY/cache | `credentials.py` |
@@ -126,12 +128,13 @@ cli.main
 | Title-line resolution (`Movie (2010)`, `Show S01E02`) | `resolve.py` |
 | Download orchestration, skip, library match | `download_ops.py` |
 | Collection/member resolution and CSV policy | `collection_ops.py` |
+| Library view resolution and type filters | `library_ops.py` |
 | User-visible messages and exit codes | `output.py` |
 | New flag or subcommand | `cli.py` + `commands/…` + `help.COMMAND_SUMMARIES` |
 
 `EmbyClient` owns one `requests.Session`, URL normalization, auth/reauth, retries,
-and cache switches. Entity services are composed as `client.items` and
-`client.collections`; they must reuse that transport rather than create sessions
+and cache switches. Entity services are composed as `client.items`,
+`client.collections`, and `client.libraries`; they must reuse that transport rather than create sessions
 or duplicate auth. Add a service when there is a real entity boundary—do not
 introduce a speculative `BaseService` hierarchy or split every endpoint into its
 own file. Existing browse/download methods remain on `client.py` until a scoped
@@ -170,6 +173,7 @@ When migrating, preserve defaults (e.g. `Fields=ITEM_FIELDS`) and stdout behavio
 | Entity | Service module | REST boundary | Notes |
 |--------|----------------|---------------|-------|
 | BoxSet collections | `api/collections.py` | `/Collections*` | Membership + catalog cache `v2:collections:…`; delegates delete/type check to `items` |
+| Library views | `api/libraries.py` | `/Users/{uid}/Views` | Read-only catalog cache `v2:libraries:…`; no create/rename/delete |
 | Generic item metadata | `api/items.py` | `/Users/{uid}/Items`, `/Items/{id}` | Shared by all metadata edits |
 | People / actors (future) | `api/people.py` (planned) | `/Persons`, person search | Lookup/create persons before linking on an item |
 | Genres, studios, tags (future) | **no separate HTTP client** | fields on item JSON | Arrays on the item (`Genres`, `Studios`, `Tags`, `People` / artist lists) — mutate via `items` only |
@@ -195,7 +199,7 @@ cli.py  →  validate_*_args (pre-auth)  →  commands/<topic>.py
                                               ↓
                                          <topic>_ops.py   # resolution, CSV, policy constants
                                               ↓
-                                         client.items / client.collections / client.<entity>
+                                         client.items / client.collections / client.libraries / client.<entity>
 ```
 
 - Put **policy constants** in `*_ops.py` (e.g. `COLLECTION_MEMBER_TYPES`), not in
@@ -295,6 +299,22 @@ Shared pattern (`mode_args.py`) for **`search`** and **`download`**:
   `--yes` without interactive stdin. Never weaken this guard or call delete on a
   selector that did not resolve uniquely.
 
+### Libraries
+
+Read-only entity commands (`library list`, `library search`, `library show`).
+Legacy `search --library`, `show --library`, and `download --library` remain
+unchanged until a later migration.
+
+- `library list` lists every library view (alias of `library search --count all`).
+  Supports `--type`, `--order-by` (`name`, `id`, `items`), `--desc`, and `--no-cache`.
+- `library search [QUERY]` filters by name substring; `--count` defaults to 30,
+  use `--count all` for the full catalog (same output as `list` without QUERY).
+- `library show` selects a library with one positional QUERY or `--id` (exact/unique
+  prefix), never both. Parent `--id` may appear before the subcommand. Reuses
+  `commands/show._print_library` for detail output.
+- `--type` accepts aliases such as `movies`, `tv`/`tvshows`, `music`, `photos`, etc.
+- No `create`, `rename`, `delete`, `set`, `add-item`, or `remove-item` for libraries.
+
 ### Output streams
 
 | Stream | Content |
@@ -326,7 +346,8 @@ Identity headers / User-Agent: `emby-cli/<version>` (`constants.CLIENT_NAME`). `
 
 ### Data cache isolation
 
-- Read-only commands (`search`, `show`, `play`, `info`, collection list/search/show) can use disk cache for metadata.
+- Read-only commands (`search`, `show`, `play`, `info`, collection list/search/show,
+  library list/search/show) can use disk cache for metadata.
 - `download` must bypass data cache.
 - Collection mutations resolve uncached and invalidate catalog/detail/member keys immediately.
 - Cache keys must include **server URL + resolved user ID** (and endpoint params) so
