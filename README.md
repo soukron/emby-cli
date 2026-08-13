@@ -162,6 +162,26 @@ library collection type (`movies`, `tvshows`, `music`, …). Detail output match
 
 Legacy library browsing via `search --library` and `show --library` still works.
 
+### Media items
+
+Search movies, episodes, audio, and other playable items. A positional name uses
+Emby search; use `--id` when results are ambiguous:
+
+```bash
+emby-cli item list
+emby-cli item list --type movie --year 1999 --order-by year --desc
+emby-cli item search "matrix"
+emby-cli item search --type audio --count all
+emby-cli item show "The Matrix (1999)"
+emby-cli item show --id 123456
+emby-cli item --id 123456 show
+```
+
+`item list` is an alias for `item search --count all`. Detail output matches
+`show --item --id`.
+
+Legacy `search --item`, `show --item`, `download --item`, and `play --item` still work.
+
 ### Play
 
 Open a title in an external player (VLC, mpv, IINA, …):
@@ -215,7 +235,7 @@ Library downloads match the library **name** (case-insensitive, unique match req
 
 Read-only commands (`search`, `show`, `play`, `info`, `collection list`,
 `collection search`, `collection show`, `library list`, `library search`, and
-`library show`) use a JSON disk cache under
+`library show`, `item list`, `item search`, and `item show`) use a JSON disk cache under
 `~/.cache/emby-cli/data` (or under `EMBY_CACHE_DIR/data`).
 
 - Default TTL: **600 seconds** (`EMBY_DATA_CACHE_TTL` to override).

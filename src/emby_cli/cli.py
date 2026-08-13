@@ -19,6 +19,7 @@ from emby_cli.commands.config import cmd_config
 from emby_cli.commands.download import cmd_download, validate_download_args
 from emby_cli.commands.help import COMMAND_SUMMARIES, cmd_help
 from emby_cli.commands.info import cmd_info
+from emby_cli.commands.item import cmd_item, validate_item_args
 from emby_cli.commands.library import cmd_library, validate_library_args
 from emby_cli.commands.login import cmd_login
 from emby_cli.commands.logout import cmd_logout
@@ -248,6 +249,90 @@ def build_parser() -> argparse.ArgumentParser:
     lib_show.add_argument("query", nargs="?", metavar="QUERY")
     lib_show.add_argument("--id", help="Library ID or unique ID prefix")
     lib_show.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass disk cache read and refresh it from API",
+    )
+
+    it = sub.add_parser("item", help=_help_by_name["item"])
+    it.add_argument(
+        "--id",
+        dest="item_id",
+        help="Media item ID or unique ID prefix (may appear before the subcommand)",
+    )
+    it_sub = it.add_subparsers(dest="item_command", required=True)
+
+    it_search = it_sub.add_parser("search", help="Search media items")
+    it_search.add_argument("query", nargs="?", metavar="QUERY")
+    it_search.add_argument(
+        "--count",
+        "-n",
+        default=str(SEARCH_COUNT_DEFAULT),
+        metavar="N|all",
+        help=f"Max results (default: {SEARCH_COUNT_DEFAULT}); use 'all' for every result",
+    )
+    it_search.add_argument(
+        "--type",
+        dest="item_type",
+        metavar="TYPE",
+        help="Filter by item type (e.g. movie, episode, audio, video)",
+    )
+    it_search.add_argument(
+        "--year",
+        type=int,
+        metavar="YYYY",
+        help="Filter by production year",
+    )
+    it_search.add_argument(
+        "--order-by",
+        choices=["year", "name", "id", "size", "resolution"],
+        default=None,
+    )
+    it_search.add_argument("--desc", action="store_true")
+    it_search.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass disk cache read and refresh it from API",
+    )
+
+    it_list = it_sub.add_parser(
+        "list",
+        help="List all media items (alias for search --count all)",
+    )
+    it_list.add_argument(
+        "--type",
+        dest="item_type",
+        metavar="TYPE",
+        help="Filter by item type (e.g. movie, episode, audio, video)",
+    )
+    it_list.add_argument(
+        "--year",
+        type=int,
+        metavar="YYYY",
+        help="Filter by production year",
+    )
+    it_list.add_argument(
+        "--order-by",
+        choices=["year", "name", "id", "size", "resolution"],
+        default=None,
+    )
+    it_list.add_argument("--desc", action="store_true")
+    it_list.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass disk cache read and refresh it from API",
+    )
+
+    it_show = it_sub.add_parser("show", help="Show a media item")
+    it_show.add_argument("query", nargs="?", metavar="QUERY")
+    it_show.add_argument("--id", help="Media item ID or unique ID prefix")
+    it_show.add_argument(
+        "--type",
+        dest="item_type",
+        metavar="TYPE",
+        help="Require a specific item type when resolving QUERY/--id",
+    )
+    it_show.add_argument(
         "--no-cache",
         action="store_true",
         help="Bypass disk cache read and refresh it from API",
@@ -533,6 +618,8 @@ def _validate_command_args(command: str, args: argparse.Namespace) -> str | None
         return validate_collection_args(args)
     if command == "library":
         return validate_library_args(args)
+    if command == "item":
+        return validate_item_args(args)
     if command == "search":
         return validate_search_args(args)
     if command == "download":
@@ -581,6 +668,7 @@ def main() -> None:
     commands = {
         "collection": cmd_collection,
         "library": cmd_library,
+        "item": cmd_item,
         "download": cmd_download,
         "search": cmd_search,
         "play": cmd_play,

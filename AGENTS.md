@@ -46,6 +46,7 @@ CLI to **search**, **inspect** (`show`), **play**, **download/backup** original 
 │   ├── download_ops.py     # download loop, skip, library matching
 │   ├── collection_ops.py   # collection/member resolution + CSV validation
 │   ├── library_ops.py      # library view resolution + type filters
+│   ├── item_ops.py         # media item resolution + type/year filters
 │   ├── output.py           # stdout/stderr messages + Stats / exit codes
 │   ├── util.py             # paths, sizes, skip, ffmpeg remux
 │   ├── constants.py        # retries, types, field lists, CLIENT_NAME
@@ -129,6 +130,7 @@ cli.main
 | Download orchestration, skip, library match | `download_ops.py` |
 | Collection/member resolution and CSV policy | `collection_ops.py` |
 | Library view resolution and type filters | `library_ops.py` |
+| Media item resolution and type/year filters | `item_ops.py` |
 | User-visible messages and exit codes | `output.py` |
 | New flag or subcommand | `cli.py` + `commands/…` + `help.COMMAND_SUMMARIES` |
 
@@ -174,7 +176,7 @@ When migrating, preserve defaults (e.g. `Fields=ITEM_FIELDS`) and stdout behavio
 |--------|----------------|---------------|-------|
 | BoxSet collections | `api/collections.py` | `/Collections*` | Membership + catalog cache `v2:collections:…`; delegates delete/type check to `items` |
 | Library views | `api/libraries.py` | `/Users/{uid}/Views` | Read-only catalog cache `v2:libraries:…`; no create/rename/delete |
-| Generic item metadata | `api/items.py` | `/Users/{uid}/Items`, `/Items/{id}` | Shared by all metadata edits |
+| Generic item metadata | `api/items.py` | `/Users/{uid}/Items`, `/Items/{id}` | Shared by all metadata edits; `search()` for catalog discovery |
 | People / actors (future) | `api/people.py` (planned) | `/Persons`, person search | Lookup/create persons before linking on an item |
 | Genres, studios, tags (future) | **no separate HTTP client** | fields on item JSON | Arrays on the item (`Genres`, `Studios`, `Tags`, `People` / artist lists) — mutate via `items` only |
 
@@ -315,6 +317,21 @@ unchanged until a later migration.
 - `--type` accepts aliases such as `movies`, `tv`/`tvshows`, `music`, `photos`, etc.
 - No `create`, `rename`, `delete`, `set`, `add-item`, or `remove-item` for libraries.
 
+### Media items
+
+Read-only entity commands (`item list`, `item search`, `item show`) for playable
+media (`Movie`, `Episode`, `Audio`, `Video`). Legacy `search --item`,
+`show --item`, `download --item`, and `play --item` remain unchanged until a
+later migration.
+
+- `item list` lists every matching item (alias of `item search --count all`).
+  Uses Emby ``SearchTerm`` via `ItemsService.search()` with v2 cache keys.
+- `item search [QUERY]` supports `--type`, `--year`, `--order-by`
+  (`year`, `name`, `id`, `size`, `resolution`), `--desc`, and `--no-cache`.
+- `item show` resolves one item by QUERY or `--id` (exact/unique prefix). Parent
+  `--id` may appear before the subcommand. Reuses `commands/show._print_media_item`.
+- No `create`, `rename`, or `delete` for items in this phase.
+
 ### Output streams
 
 | Stream | Content |
@@ -347,7 +364,7 @@ Identity headers / User-Agent: `emby-cli/<version>` (`constants.CLIENT_NAME`). `
 ### Data cache isolation
 
 - Read-only commands (`search`, `show`, `play`, `info`, collection list/search/show,
-  library list/search/show) can use disk cache for metadata.
+  library list/search/show, item list/search/show) can use disk cache for metadata.
 - `download` must bypass data cache.
 - Collection mutations resolve uncached and invalidate catalog/detail/member keys immediately.
 - Cache keys must include **server URL + resolved user ID** (and endpoint params) so

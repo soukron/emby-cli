@@ -22,13 +22,17 @@ Added:
   discovery and inspection (`/Users/{uid}/Views`). `library list` is an alias for
   `library search --count all`. Supports `--type`, `--order-by`, and parent/subcommand
   `--id` like collections. Legacy `search --library` / `show --library` unchanged.
+- `item list`, `item search`, and `item show` for read-only media discovery and
+  inspection via `ItemsService.search()`. `item list` is an alias for
+  `item search --count all`. Supports `--type`, `--year`, `--order-by`, and
+  parent/subcommand `--id`. Legacy `search --item` / `show --item` unchanged.
 
 Changed:
 
 - `EmbyClient` now composes entity-oriented `ItemsService`,
   `CollectionsService`, and `LibrariesService` modules while retaining one shared HTTP/auth/retry/cache
-  transport. This is the scaffold for future people, genre, studio, tag, and
-  music-aware operations.
+  transport. `ItemsService.search()` adds v2 catalog search keys for the new
+  `item` commands; legacy browse helpers remain on `EmbyClient`.
 - Metadata cache now supports exact invalidation. Collection mutations bypass
   stale reads and invalidate catalog, detail, and member entries immediately.
 - Operational HTTP 403 responses from collection commands produce a concise

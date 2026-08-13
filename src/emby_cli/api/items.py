@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from emby_cli.constants import ITEM_FIELDS
+from emby_cli.constants import ITEM_FIELDS, SEARCH_ITEM_TYPES
 from emby_cli.data_cache import delete_json
 
 if TYPE_CHECKING:
@@ -81,6 +81,46 @@ class ItemsService:
         if use_cache:
             self.client._cache_write(key, items)
         return items
+
+    def _search_key(self, query: str, item_types: str) -> str:
+        uid = self.client.resolve_user_id()
+        return (
+            f"v2:item-search:{self.client.server_url}:{uid}:"
+            f"{item_types}:{query}"
+        )
+
+    def search(
+        self,
+        query: str = "",
+        *,
+        item_types: str | None = None,
+        use_cache: bool = True,
+    ) -> tuple[list[dict], int]:
+        """Search playable media items via Emby ``SearchTerm``."""
+        types = item_types or SEARCH_ITEM_TYPES
+        key = self._search_key(query, types)
+        if use_cache:
+            cached = self.client._cache_read(key)
+            if isinstance(cached, dict):
+                items = cached.get("items")
+                total = cached.get("total")
+                if isinstance(items, list) and isinstance(total, int):
+                    return items, total
+        uid = self.client.resolve_user_id()
+        items, total = self.client._paginate(
+            f"/Users/{uid}/Items",
+            {
+                "SearchTerm": query,
+                "Recursive": "true",
+                "Fields": ITEM_FIELDS,
+                "IncludeItemTypes": types,
+            },
+            limit=None,
+        )
+        payload = {"items": items, "total": int(total)}
+        if use_cache:
+            self.client._cache_write(key, payload)
+        return items, int(total)
 
     def get(
         self,

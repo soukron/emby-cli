@@ -10,6 +10,7 @@ import pytest
 from emby_cli.cli import main
 from emby_cli.commands.collection import validate_collection_args
 from emby_cli.commands.download import DownloadOpts, validate_download_args
+from emby_cli.commands.item import validate_item_args
 from emby_cli.commands.library import validate_library_args
 from emby_cli.commands.play import validate_play_args
 from emby_cli.commands.search import validate_search_args
@@ -445,3 +446,28 @@ def test_main_library_invalid_selector_skips_auth(capsys, monkeypatch):
     assert exc.value.code == 1
     open_client.assert_not_called()
     assert "exactly one library QUERY or --id" in capsys.readouterr().err
+
+
+def test_validate_item_requires_exactly_one_selector_for_show():
+    assert validate_item_args(argparse.Namespace(
+        item_command="show", query=None, id=None, item_id=None,
+    )) == "provide exactly one media item QUERY or --id"
+    assert validate_item_args(argparse.Namespace(
+        item_command="show", query="Matrix", id="1", item_id=None,
+    )) == "provide exactly one media item QUERY or --id"
+
+
+def test_validate_item_rejects_items_order_by():
+    assert validate_item_args(argparse.Namespace(
+        item_command="search", query="", count="all", order_by="items",
+    )) == "--order-by items can only be used with library search"
+
+
+def test_main_item_invalid_selector_skips_auth(capsys, monkeypatch):
+    monkeypatch.setattr("sys.argv", ["emby-cli", "item", "show"])
+    with patch("emby_cli.cli._open_client") as open_client:
+        with pytest.raises(SystemExit) as exc:
+            main()
+    assert exc.value.code == 1
+    open_client.assert_not_called()
+    assert "exactly one media item QUERY or --id" in capsys.readouterr().err
