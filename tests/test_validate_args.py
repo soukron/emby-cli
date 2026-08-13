@@ -9,11 +9,12 @@ import pytest
 
 from emby_cli.cli import main
 from emby_cli.commands.collection import validate_collection_args
-from emby_cli.commands.download import DownloadOpts, validate_download_args
+from emby_cli.commands.download import validate_download_args
 from emby_cli.commands.item import validate_item_args
 from emby_cli.commands.library import validate_library_args
 from emby_cli.commands.play import validate_play_args
 from emby_cli.commands.search import validate_search_args
+from emby_cli.item_ops import DownloadOpts
 from emby_cli.mode_args import resolve_item_id
 
 
@@ -76,6 +77,12 @@ def test_validate_collection_set_requires_selector_and_assignments():
         collection_command="set", query=None, id=None, collection_id=None,
         rest=["Star Wars", "year=1980"],
     )) is None
+
+
+def test_validate_collection_download_requires_selector():
+    assert validate_collection_args(argparse.Namespace(
+        collection_command="download", query=None, id=None, collection_id=None,
+    )) == "provide exactly one collection QUERY or --id"
 
 
 def test_validate_collection_set_rejects_unknown_field():
@@ -273,6 +280,25 @@ def test_download_opts_from_args_uses_defaults_and_normalizes_values():
     assert opts.throttle == 0
     assert opts.method == "download"
     assert opts.dry_run is False
+    assert opts.mirror_path is False
+
+
+def test_download_opts_from_args_reads_mirror_path():
+    opts = DownloadOpts.from_args(
+        argparse.Namespace(output="backup", throttle=0, mirror_path=True)
+    )
+    assert opts.mirror_path is True
+
+
+def test_download_opts_from_args_reads_path_strip():
+    opts = DownloadOpts.from_args(
+        argparse.Namespace(
+            output="backup",
+            throttle=0,
+            path_strip=" /mnt/media ",
+        )
+    )
+    assert opts.path_strip == "/mnt/media"
 
 
 def test_resolve_item_id_prefers_flag_over_environment(monkeypatch):
@@ -467,6 +493,18 @@ def test_validate_item_play_requires_selector_and_pick_best_rules():
     assert validate_item_args(argparse.Namespace(
         item_command="play", query=None, id="1", item_id=None, pick_best_item=True,
     )) == "--pick-best-item can only be used with QUERY"
+
+
+def test_validate_item_download_requires_selector():
+    assert validate_item_args(argparse.Namespace(
+        item_command="download", query=None, id=None, item_id=None, pick_best_item=False,
+    )) == "provide exactly one media item QUERY or --id"
+
+
+def test_validate_library_download_requires_selector():
+    assert validate_library_args(argparse.Namespace(
+        library_command="download", query=None, id=None, library_id=None,
+    )) == "provide exactly one library QUERY or --id"
 
 
 def test_main_item_invalid_selector_skips_auth(capsys, monkeypatch):

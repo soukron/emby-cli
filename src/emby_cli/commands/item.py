@@ -9,8 +9,11 @@ from emby_cli.commands.show import _print_media_item
 from emby_cli.constants import SEARCH_COUNT_DEFAULT
 from emby_cli.item_ops import (
     ITEM_TYPE_ALIASES,
+    DownloadOpts,
     ItemResolutionError,
     build_item_listing_query,
+    download_item_ids,
+    download_items,
     fetch_item_listing,
     find_player,
     item_selector_id,
@@ -19,7 +22,7 @@ from emby_cli.item_ops import (
     play_one_item,
     resolve_item,
 )
-from emby_cli.output import print_error
+from emby_cli.output import print_done, print_error
 from emby_cli.resolve import pick_best_item, print_item_choices
 
 
@@ -62,6 +65,14 @@ def validate_item_args(args: argparse.Namespace) -> str | None:
         if bool(query) == bool(item_id):
             return "provide exactly one media item QUERY or --id"
     elif command == "play":
+        query = _text(args, "query")
+        item_id = item_selector_id(args)
+        pick_best = getattr(args, "pick_best_item", False) is True
+        if bool(query) == bool(item_id):
+            return "provide exactly one media item QUERY or --id"
+        if item_id and pick_best:
+            return "--pick-best-item can only be used with QUERY"
+    elif command == "download":
         query = _text(args, "query")
         item_id = item_selector_id(args)
         pick_best = getattr(args, "pick_best_item", False) is True
@@ -151,6 +162,45 @@ def _cmd_play(client: EmbyClient, args: argparse.Namespace) -> None:
         raise SystemExit(rc)
 
 
+def _cmd_download(client: EmbyClient, args: argparse.Namespace) -> None:
+    opts = DownloadOpts.from_args(args)
+    pick_best = getattr(args, "pick_best_item", False) is True
+    if opts.dry_run:
+        print("*** DRY RUN — no files will be downloaded ***\n")
+
+    item_id = item_selector_id(args)
+    if item_id:
+        stats = download_item_ids(
+            client,
+            item_id,
+            opts.output,
+            method=opts.method,
+            force=args.force,
+            throttle=opts.throttle,
+            dry_run=opts.dry_run,
+            raw_type=_text(args, "item_type"),
+            mirror_path=opts.mirror_path,
+            path_strip=opts.path_strip,
+        )
+        print_done(stats)
+        raise SystemExit(stats.exit_code())
+
+    item = _resolve_from_args(client, args, use_cache=False, pick_best=pick_best)
+    stats = download_items(
+        client,
+        [item],
+        opts.output,
+        method=opts.method,
+        force=args.force,
+        throttle=opts.throttle,
+        dry_run=opts.dry_run,
+        mirror_path=opts.mirror_path,
+        path_strip=opts.path_strip,
+    )
+    print_done(stats)
+    raise SystemExit(stats.exit_code())
+
+
 def _cmd_item_listing(
     client: EmbyClient,
     args: argparse.Namespace,
@@ -205,5 +255,6 @@ def cmd_item(client: EmbyClient, args: argparse.Namespace) -> None:
         "list": _cmd_list,
         "show": _cmd_show,
         "play": _cmd_play,
+        "download": _cmd_download,
     }
     handlers[args.item_command](client, args)

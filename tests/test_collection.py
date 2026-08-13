@@ -11,6 +11,7 @@ from emby_cli.api.collections import COLLECTION_DETAIL_FIELDS
 from emby_cli.cli import build_parser, main
 from emby_cli.client import EmbyClient
 from emby_cli.commands.collection import cmd_collection
+from emby_cli.output import Stats
 
 
 def _client() -> EmbyClient:
@@ -99,6 +100,23 @@ def test_collection_show_no_cache_refreshes_service_cache():
     assert client.no_data_cache is True
     listing.assert_called_once_with(use_cache=True)
     get.assert_called_once_with("10", fields=COLLECTION_DETAIL_FIELDS, use_cache=True)
+
+
+def test_collection_download_delegates_to_collection_ops():
+    client = _client()
+    collection = {"Id": "10", "Name": "Saga", "Type": "BoxSet"}
+    with (
+        patch("emby_cli.commands.collection.resolve_collection", return_value=collection),
+        patch(
+            "emby_cli.commands.collection.download_collection",
+            return_value=Stats(ok=2),
+        ) as download,
+        patch("emby_cli.commands.collection.print_done"),
+    ):
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_collection(client, _args("download", "Saga", "--dry-run"))
+    assert exc_info.value.code == 0
+    download.assert_called_once()
 
 
 def test_collection_create_with_no_members(capsys):

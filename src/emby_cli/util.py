@@ -2,21 +2,73 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
 from emby_cli.constants import TICKS_PER_SECOND
 
 
-def build_dest_path(item: dict, output_dir: Path) -> Path:
-    """Build a destination path that mirrors the Emby library structure."""
+def safe_output_dir_name(name: str) -> str:
+    """Return a filesystem-safe directory name for bulk downloads."""
+    cleaned = name.strip().replace("/", "-").replace("\0", "")
+    return cleaned or "?"
+
+
+def _optional_path_strip(value: str | None) -> str | None:
+    if not value:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def mirrored_path_parts(server_path: str, *, path_strip: str | None = None) -> tuple[str, ...]:
+    """Return relative path components to recreate under the output folder."""
+    parts = Path(server_path).parts
+    if not parts:
+        return ()
+
+    strip_parts = Path(_optional_path_strip(path_strip) or "").parts
+    if (
+        strip_parts
+        and len(parts) >= len(strip_parts)
+        and parts[: len(strip_parts)] == strip_parts
+    ):
+        remainder = parts[len(strip_parts) :]
+        if remainder:
+            return remainder
+        return (Path(server_path).name,)
+
+    if len(parts) >= 3:
+        return parts[-3:]
+    if len(parts) >= 2:
+        return parts[-2:]
+    return parts
+
+
+def build_dest_path(
+    item: dict,
+    output_dir: Path,
+    *,
+    mirror_path: bool = False,
+    path_strip: str | None = None,
+) -> Path:
+    """Build a destination path under *output_dir*.
+
+    By default uses the item's original filename only. With *mirror_path*, recreate
+    source subdirectories. When *path_strip* (or env ``EMBY_PATH_STRIP``) is set,
+    remove that server prefix and keep the remainder; otherwise fall back to the
+    last 2-3 path components heuristic.
+    """
     server_path = item.get("Path", "")
     if server_path:
-        # Use the last 2-3 path components (e.g. Movies/Title/file.mkv)
-        parts = Path(server_path).parts
-        # Take from the library-level folder onward (heuristic: skip leading /downloads, /mnt, etc.)
-        relevant = parts[-3:] if len(parts) >= 3 else parts[-2:] if len(parts) >= 2 else parts
-        return output_dir / Path(*relevant)
+        if mirror_path:
+            effective_strip = _optional_path_strip(path_strip)
+            if effective_strip is None:
+                effective_strip = _optional_path_strip(os.environ.get("EMBY_PATH_STRIP"))
+            relevant = mirrored_path_parts(server_path, path_strip=effective_strip)
+            return output_dir / Path(*relevant)
+        return output_dir / Path(server_path).name
 
     name = item.get("Name", item["Id"])
     ext = ".mkv"

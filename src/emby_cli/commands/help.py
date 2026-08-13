@@ -12,9 +12,9 @@ COMMAND_SUMMARIES: tuple[tuple[str, str], ...] = (
     ("info", "Show session user, server details, libraries, and item counts"),
     ("search", "Search media items or libraries"),
     ("show", "Show details for a media item or library by ID"),
-    ("collection", "Search and manage Emby collections"),
-    ("library", "Search and inspect Emby libraries"),
-    ("item", "Search, inspect, and play media items"),
+    ("collection", "Search, manage, and download collections"),
+    ("library", "Search, inspect, and download libraries"),
+    ("item", "Search, inspect, play, and download media items"),
     ("download", "Download media items or libraries"),
     ("play", "Play a media item using an external player"),
 )

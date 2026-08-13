@@ -94,7 +94,12 @@ emby-cli collection search
 emby-cli collection search "star" --order-by year --desc
 emby-cli collection show "Star Wars"
 emby-cli collection show --id 1234
+emby-cli collection download "Star Wars" --dry-run
+emby-cli collection download --id 1234 -o ./downloads
 ```
+
+`collection download` resolves the collection and downloads each member
+individually via the same item download pipeline as `item download`.
 
 `collection list` is an alias for `collection search --count all` (every
 `BoxSet`, no name filter). Use `collection search [QUERY]` when you want to
@@ -154,13 +159,17 @@ emby-cli library search "pel" --count all
 emby-cli library show "Películas"
 emby-cli library show --id 614156
 emby-cli library --id 614156 show
+emby-cli library download "Películas" --dry-run
+emby-cli library download --id 614156 -o ./downloads
 ```
 
 `library list` is an alias for `library search --count all`. `--type` filters by
 library collection type (`movies`, `tvshows`, `music`, …). Detail output matches
-`show --library --id`.
+`show --library --id`. `library download` resolves the library and downloads
+each item individually via the same item download pipeline as `item download`.
 
-Legacy library browsing via `search --library` and `show --library` still works.
+Legacy library browsing via `search --library`, `show --library`, and
+`download --library` still works.
 
 ### Media items
 
@@ -177,11 +186,13 @@ emby-cli item show --id 123456
 emby-cli item --id 123456 show
 emby-cli item play "matrix (1999)" --pick-best-item
 emby-cli item play --id 123456 --player vlc --wait
+emby-cli item download "matrix (1999)" --pick-best-item
+emby-cli item download --id 123456 --method stream
 ```
 
 `item list` is an alias for `item search --count all`. Detail output matches
-`show --item --id`. `item play` mirrors `play --item` / `play --id` using the
-same player flags.
+`show --item --id`. `item play` mirrors `play --item` / `play --id`; `item download`
+mirrors `download --item` using the same output/method flags.
 
 Legacy `search --item`, `show --item`, `download --item`, and `play --item` still work.
 
@@ -206,6 +217,7 @@ Download a single title, a whole library, or a list of titles from a file:
 ```bash
 emby-cli download --item --id 123456
 emby-cli download --item --id 111,222,333
+emby-cli item download --id 123456
 emby-cli download --item "breaking bad S01E01" --pick-best-item
 emby-cli download --library "peliculas 4k"
 emby-cli download --from-file titles.txt
@@ -221,6 +233,8 @@ Useful options:
 | `-n` / `--dry-run` | Resolve titles only — do not write files          |
 | `-o` / `--output`  | Output folder (default `./downloads`)             |
 | `-f` / `--force`   | Re-download even if a matching local file exists  |
+| `--mirror-path`    | Recreate source subdirectories under the output folder |
+| `--path-strip`     | Strip this server path prefix with `--mirror-path` (env: `EMBY_PATH_STRIP`) |
 | `--pick-best-item` | When several versions match, pick the best ≤1080p |
 | `-m` / `--method`  | Download method                                            |
 
@@ -307,6 +321,7 @@ Flags override environment variables. Optional template: `.env.example` (export 
 | `EMBY_USERNAME` / `EMBY_PASSWORD` | Username / password                                 |
 | `EMBY_OUTPUT`                     | Download directory (default `./downloads`)          |
 | `EMBY_METHOD`                     | `download`, `stream`, or `hls`                      |
+| `EMBY_PATH_STRIP`                 | Server path prefix to strip with `--mirror-path`      |
 | `EMBY_PLAYER`                     | External player command or path                     |
 | `EMBY_ITEM_ID`                    | Default `--id` for item download / play             |
 | `EMBY_CACHE_DIR`                  | Credentials directory (default `~/.cache/emby-cli`) |

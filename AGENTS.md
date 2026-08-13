@@ -45,8 +45,9 @@ CLI to **search**, **inspect** (`show`), **play**, **download/backup** original 
 │   ├── resolve.py          # title lines, pick_best, choice tables
 │   ├── download_ops.py     # download loop, skip, library matching
 │   ├── collection_ops.py   # collection/member resolution + CSV validation
-│   ├── library_ops.py      # library view resolution + type filters
-│   ├── item_ops.py         # media item resolution, listing, and playback
+│   ├── download_ops.py     # library name/id matching helpers
+│   ├── library_ops.py      # library view resolution, type filters, and download
+│   ├── item_ops.py         # media item resolution, listing, playback, and download
 │   ├── output.py           # stdout/stderr messages + Stats / exit codes
 │   ├── util.py             # paths, sizes, skip, ffmpeg remux
 │   ├── constants.py        # retries, types, field lists, CLIENT_NAME
@@ -98,6 +99,7 @@ The CLI reads **`os.environ` only** (it does not auto-load `.env`; export vars o
 | `EMBY_OUTPUT` | Download destination (default `./downloads`) |
 | `EMBY_ITEM_ID` | Default `--id` for `download --item` / `play` |
 | `EMBY_METHOD` | `download` \| `stream` \| `hls` |
+| `EMBY_PATH_STRIP` | With `--mirror-path`, strip this server path prefix before mirroring (e.g. `/mnt/media`) |
 | `EMBY_PLAYER` | External player command for `play` |
 | `EMBY_CACHE_DIR` | Credential store dir (default `~/.cache/emby-cli`; file `auth.json`) |
 | `EMBY_NO_AUTH_CACHE` | `1` = do not read/write session cache |
@@ -127,7 +129,8 @@ cli.main
 | Resolving server/user/password from flags/env/TTY/cache | `credentials.py` |
 | `--item` / `--library` / embedded QUERY | `mode_args.py` + command modules |
 | Title-line resolution (`Movie (2010)`, `Show S01E02`) | `resolve.py` |
-| Download orchestration, skip, library match | `download_ops.py` |
+| Download orchestration, skip, library match | `item_ops.py` (items), `library_ops.py` (libraries), `collection_ops.py` (collections) |
+| Library name/id matching (legacy search/show) | `download_ops.py` |
 | Collection/member resolution and CSV policy | `collection_ops.py` |
 | Library view resolution and type filters | `library_ops.py` |
 | Media item resolution, listing, and playback | `item_ops.py` |
@@ -282,7 +285,7 @@ Shared pattern (`mode_args.py`) for **`search`** and **`download`**:
   Supports `--order-by`, `--desc`, and `--no-cache` like search.
 - `collection search [QUERY]` filters by name substring; `--count` defaults to 30,
   use `--count all` for the full catalog (same output as `list` without QUERY).
-- `collection show/delete/rename/add-item/remove-item/set` select a collection with
+- `collection show/delete/rename/download/add-item/remove-item/set` select a collection with
   one positional QUERY or `--id` (exact/unique prefix), never both. There is no
   redundant `--collection` flag.
 - Name resolution is case-insensitive substring matching; ambiguity prints a
@@ -300,12 +303,18 @@ Shared pattern (`mode_args.py`) for **`search`** and **`download`**:
 - `delete` re-fetches and verifies `Type=BoxSet`, prompts on a TTY, and requires
   `--yes` without interactive stdin. Never weaken this guard or call delete on a
   selector that did not resolve uniquely.
+- `collection download` resolves one collection by QUERY or `--id`, lists its
+  downloadable members, and downloads each via `item_ops.download_items`. Supports
+  `--output`, `--method`, `--force`, `--throttle`, `--dry-run`, and optional
+  `--mirror-path` (recreate source subdirectories under the output folder).
+  Optional `EMBY_PATH_STRIP` / `--path-strip` removes a server mount prefix first;
+  if the prefix does not match, the last 2-3 path components heuristic is used.
 
 ### Libraries
 
-Read-only entity commands (`library list`, `library search`, `library show`).
-Legacy `search --library`, `show --library`, and `download --library` remain
-unchanged until a later migration.
+Read-only entity commands (`library list`, `library search`, `library show`) plus
+`library download`. Legacy `search --library`, `show --library`, and
+`download --library` remain unchanged until a later migration.
 
 - `library list` lists every library view (alias of `library search --count all`).
   Supports `--type`, `--order-by` (`name`, `id`, `items`), `--desc`, and `--no-cache`.
@@ -315,14 +324,20 @@ unchanged until a later migration.
   prefix), never both. Parent `--id` may appear before the subcommand. Reuses
   `commands/show._print_library` for detail output.
 - `--type` accepts aliases such as `movies`, `tv`/`tvshows`, `music`, `photos`, etc.
+- `library download` resolves one library by QUERY or `--id`, lists its downloadable
+  items, and downloads each via `item_ops.download_items`. Supports `--output`,
+  `--method`, `--force`, `--throttle`, `--dry-run`, and optional `--mirror-path`.
+  Files land in `output/<library name>/` (flat by default; subdirectories when
+  `--mirror-path` is set). Optional `EMBY_PATH_STRIP` / `--path-strip` removes a
+  server mount prefix before mirroring.
 - No `create`, `rename`, `delete`, `set`, `add-item`, or `remove-item` for libraries.
 
 ### Media items
 
-Read-only entity commands (`item list`, `item search`, `item show`, `item play`) for playable
-media (`Movie`, `Episode`, `Audio`, `Video`). Legacy `search --item`,
-`show --item`, `download --item`, and `play --item` remain unchanged until a
-later migration.
+Read-only entity commands (`item list`, `item search`, `item show`, `item play`) plus
+`item download` for playable media (`Movie`, `Episode`, `Audio`, `Video`). Legacy
+`search --item`, `show --item`, `download --item`, and `play --item` remain
+unchanged until a later migration.
 
 - `item list` lists every matching item (alias of `item search --count all`).
   Uses Emby ``SearchTerm`` via `ItemsService.search()` with v2 cache keys.
@@ -337,6 +352,11 @@ later migration.
   Supports `--player`, `--wait`, `--pick-best-item`, `--no-cache`, and
   comma-separated `--id`. Parent `--id` may appear before the subcommand.
   Legacy top-level `play` remains a thin wrapper until deprecation.
+- `item download` resolves one item by QUERY or `--id` (CSV supported) and downloads
+  via `item_ops` (`download_items`, `download_item_ids`). Supports `--output`,
+  `--method`, `--force`, `--throttle`, `--pick-best-item`, `--dry-run`, and optional
+  `--mirror-path`.
+  Legacy top-level `download --item` remains a thin wrapper until deprecation.
 - No `create`, `rename`, or `delete` for items in this phase.
 
 ### Output streams
@@ -482,7 +502,7 @@ Maintainers with a local wrapper Makefile may use an equivalent `make release VE
 | New subcommand or flag | `cli.py`, `commands/…`, `help.COMMAND_SUMMARIES` |
 | `show` detail / library recents | `commands/show.py`, `constants.SHOW_*` |
 | Title disambiguation / pick-best | `resolve.py` |
-| Skip / dry-run / library download loop | `download_ops.py` |
+| Skip / dry-run / bulk download loops | `item_ops.py`, `library_ops.download_library`, `collection_ops.download_collection` |
 | Message text / exit codes | `output.py` |
 | Emby response typing | `types.py` (TypedDict; apply gradually) |
 | User docs | `README.md` |

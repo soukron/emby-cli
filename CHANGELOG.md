@@ -26,9 +26,17 @@ Added:
   inspection via `ItemsService.search()`. `item list` is an alias for
   `item search --count all`. Supports `--type`, `--year`, `--order-by`, and
   parent/subcommand `--id`. Legacy `search --item` / `show --item` unchanged.
+- `item download`, `library download`, and `collection download` for bulk and
+  single-item downloads via shared `item_ops` helpers. Library and collection
+  downloads write into `output/<name>/`; items use flat filenames by default.
+- `--mirror-path` and `EMBY_PATH_STRIP` / `--path-strip` to recreate server
+  subdirectories under the output folder when needed.
+- Legacy top-level `download` remains as a thin wrapper over the new helpers.
 
 Changed:
 
+- Download orchestration, skip logic, and item loops now live in `item_ops.py`;
+  `download_ops.py` retains library name/id matching only.
 - `EmbyClient` now composes entity-oriented `ItemsService`,
   `CollectionsService`, and `LibrariesService` modules while retaining one shared HTTP/auth/retry/cache
   transport. `ItemsService.search()` adds v2 catalog search keys for the new

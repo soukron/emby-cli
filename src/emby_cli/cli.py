@@ -37,6 +37,67 @@ from emby_cli.credentials import (
 _FORCE_HELP = "Re-download even if local file already matches"
 
 
+def _uses_data_cache(command: str, args: argparse.Namespace) -> bool:
+    if command == "download":
+        return False
+    subcommand = getattr(args, "item_command", None) or getattr(args, "library_command", None)
+    if command == "item" and subcommand == "download":
+        return False
+    if command == "library" and subcommand == "download":
+        return False
+    if command == "collection" and subcommand == "download":
+        return False
+    return True
+
+
+def _add_download_options(
+    parser: argparse.ArgumentParser,
+    *,
+    env,
+    default_output: str,
+    force_help: str,
+) -> None:
+    parser.add_argument(
+        "--output",
+        "-o",
+        default=env("EMBY_OUTPUT", default_output),
+        help=f"Output directory (env: EMBY_OUTPUT, default: {default_output})",
+    )
+    parser.add_argument("--force", "-f", action="store_true", help=force_help)
+    parser.add_argument(
+        "--throttle",
+        "-t",
+        type=float,
+        nargs="?",
+        const=1.0,
+        default=0,
+        help="Limit speed to playback rate (optional multiplier; default: off)",
+    )
+    parser.add_argument(
+        "--method",
+        "-m",
+        default=env("EMBY_METHOD", "download"),
+        choices=["download", "stream", "hls"],
+        help="download, stream, or hls (env: EMBY_METHOD)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        "-n",
+        action="store_true",
+        help="Resolve only; do not download",
+    )
+    parser.add_argument(
+        "--mirror-path",
+        action="store_true",
+        help="Recreate source directory structure under the output folder",
+    )
+    parser.add_argument(
+        "--path-strip",
+        default=env("EMBY_PATH_STRIP"),
+        help="With --mirror-path, strip this server path prefix (env: EMBY_PATH_STRIP)",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     env = os.environ.get
 
@@ -132,6 +193,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-cache",
         action="store_true",
         help="Bypass disk cache read and refresh it from API",
+    )
+
+    col_download = col_sub.add_parser(
+        "download",
+        help="Download all downloadable items in a collection",
+    )
+    col_download.add_argument("query", nargs="?", metavar="QUERY")
+    col_download.add_argument("--id", help="Collection ID or unique ID prefix")
+    _add_download_options(
+        col_download,
+        env=env,
+        default_output=DEFAULT_OUTPUT,
+        force_help=_FORCE_HELP,
     )
 
     col_create = col_sub.add_parser("create", help="Create a collection")
@@ -254,6 +328,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Bypass disk cache read and refresh it from API",
     )
 
+    lib_download = lib_sub.add_parser(
+        "download",
+        help="Download all downloadable items in a library",
+    )
+    lib_download.add_argument("query", nargs="?", metavar="QUERY")
+    lib_download.add_argument("--id", help="Library ID or unique ID prefix")
+    _add_download_options(
+        lib_download,
+        env=env,
+        default_output=DEFAULT_OUTPUT,
+        force_help=_FORCE_HELP,
+    )
+
     it = sub.add_parser("item", help=_help_by_name["item"])
     it.add_argument(
         "--id",
@@ -370,6 +457,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Bypass disk cache read and refresh it from API",
     )
 
+    it_download = it_sub.add_parser("download", help="Download media items")
+    it_download.add_argument("query", nargs="?", metavar="QUERY")
+    it_download.add_argument("--id", help="Media item ID to download (comma-separated for multiple)")
+    it_download.add_argument(
+        "--type",
+        dest="item_type",
+        metavar="TYPE",
+        help="Require a specific item type when resolving QUERY/--id",
+    )
+    it_download.add_argument(
+        "--pick-best-item",
+        action="store_true",
+        help="On ambiguous search results, auto-select best ≤1080p "
+             "(default: list matches and fail)",
+    )
+    _add_download_options(
+        it_download,
+        env=env,
+        default_output=DEFAULT_OUTPUT,
+        force_help=_FORCE_HELP,
+    )
+
     dl = sub.add_parser(
         "download",
         help=(
@@ -447,6 +556,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=env("EMBY_METHOD", "download"),
         choices=["download", "stream", "hls"],
         help="download, stream, or hls (env: EMBY_METHOD)",
+    )
+    dl.add_argument(
+        "--mirror-path",
+        action="store_true",
+        help="Recreate source directory structure under the output folder",
+    )
+    dl.add_argument(
+        "--path-strip",
+        default=env("EMBY_PATH_STRIP"),
+        help="With --mirror-path, strip this server path prefix (env: EMBY_PATH_STRIP)",
     )
 
     sr = sub.add_parser("search", help=_help_by_name["search"])
@@ -612,7 +731,7 @@ def _open_client(args: argparse.Namespace) -> EmbyClient:
 
     api_key, username, password = resolve_operational_auth(args)
     client = EmbyClient(server, api_key=api_key)
-    client.use_data_cache = args.command != "download"
+    client.use_data_cache = _uses_data_cache(args.command, args)
     client.no_data_cache = bool(getattr(args, "no_cache", False))
 
     if api_key:

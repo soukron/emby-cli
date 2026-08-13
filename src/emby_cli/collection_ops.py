@@ -1,12 +1,17 @@
-"""Resolution and validation helpers for Emby collections."""
+"""Resolution, member handling, and download helpers for Emby collections."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import requests
 
 from emby_cli.client import EmbyClient
+from emby_cli.constants import DOWNLOADABLE_TYPES
+from emby_cli.item_ops import download_items
+from emby_cli.output import Stats, print_section
+from emby_cli.util import safe_output_dir_name
 
 COLLECTION_MEMBER_TYPES = frozenset({"Movie"})
 
@@ -245,3 +250,46 @@ def collection_rows(collections: list[dict]) -> list[dict]:
         }
         for item in collections
     ]
+
+
+def collection_downloadable_items(client: EmbyClient, collection: dict) -> list[dict]:
+    """Return downloadable media items belonging to one collection."""
+    collection_id = str(collection.get("Id") or "")
+    items = client.items.list_all(parent_id=collection_id, use_cache=False)
+    return [item for item in items if item.get("Type") in DOWNLOADABLE_TYPES]
+
+
+def download_collection(
+    client: EmbyClient,
+    collection: dict,
+    output: Path,
+    *,
+    method: str,
+    force: bool,
+    throttle: float,
+    show_section: bool = True,
+    dry_run: bool = False,
+    mirror_path: bool = False,
+    path_strip: str | None = None,
+) -> Stats:
+    """Download every downloadable member in *collection* via ``item_ops``."""
+    name = collection.get("Name") or "?"
+    if show_section:
+        print_section(f"Collection: {name}")
+
+    targets = collection_downloadable_items(client, collection)
+    print(f"Found {len(targets)} items in '{name}'")
+
+    dest_dir = output / safe_output_dir_name(name)
+    return download_items(
+        client,
+        targets,
+        dest_dir,
+        method=method,
+        force=force,
+        throttle=throttle,
+        dry_run=dry_run,
+        show_single_progress=True,
+        mirror_path=mirror_path,
+        path_strip=path_strip,
+    )

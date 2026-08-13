@@ -1,4 +1,4 @@
-"""download command — media item, library, or title file."""
+"""download command — legacy wrapper over item and library download helpers."""
 
 from __future__ import annotations
 
@@ -6,20 +6,19 @@ import argparse
 import re
 import sys
 import time
-from dataclasses import dataclass
 from pathlib import Path
 
 import requests
 
 from emby_cli.client import EmbyClient
-from emby_cli.download_ops import (
+from emby_cli.download_ops import find_library, library_rows, match_libraries
+from emby_cli.item_ops import (
+    DownloadOpts,
+    download_item_ids,
     download_items,
-    download_library_items,
     download_one_item,
-    find_library,
-    library_rows,
-    match_libraries,
 )
+from emby_cli.library_ops import download_library
 from emby_cli.mode_args import (
     mode_is_item,
     mode_is_library,
@@ -33,25 +32,6 @@ from emby_cli.resolve import (
     resolve_title_items,
 )
 from emby_cli.util import format_duration
-
-
-@dataclass(frozen=True)
-class DownloadOpts:
-    """Download settings shared by every download mode."""
-
-    output: Path
-    throttle: float
-    method: str
-    dry_run: bool
-
-    @classmethod
-    def from_args(cls, args: argparse.Namespace) -> DownloadOpts:
-        return cls(
-            output=Path(args.output),
-            throttle=float(getattr(args, "throttle", 0) or 0),
-            method=getattr(args, "method", "download"),
-            dry_run=bool(getattr(args, "dry_run", False)),
-        )
 
 
 def validate_download_args(args: argparse.Namespace) -> str | None:
@@ -96,29 +76,17 @@ def _cmd_download_item(client: EmbyClient, args: argparse.Namespace) -> None:
         print("*** DRY RUN — no files will be downloaded ***\n")
 
     if item_id:
-        item_ids = [x.strip() for x in item_id.split(",") if x.strip()]
-        items: list[dict] = []
-        stats = Stats()
-        total = len(item_ids)
-        for idx, iid in enumerate(item_ids, 1):
-            try:
-                items.append(client.get_item_info(iid))
-            except (requests.RequestException, RuntimeError) as exc:
-                print_error(f"fetching item {iid}: {exc}", idx=idx, total=total)
-                stats.error += 1
-        if items:
-            got = download_items(
-                client,
-                items,
-                opts.output,
-                method=opts.method,
-                force=args.force,
-                throttle=opts.throttle,
-                dry_run=opts.dry_run,
-            )
-            stats.ok += got.ok
-            stats.skip += got.skip
-            stats.error += got.error
+        stats = download_item_ids(
+            client,
+            item_id,
+            opts.output,
+            method=opts.method,
+            force=args.force,
+            throttle=opts.throttle,
+            dry_run=opts.dry_run,
+            mirror_path=opts.mirror_path,
+            path_strip=opts.path_strip,
+        )
         print_done(stats)
         sys.exit(stats.exit_code())
 
@@ -139,6 +107,8 @@ def _cmd_download_item(client: EmbyClient, args: argparse.Namespace) -> None:
         force=args.force,
         throttle=opts.throttle,
         dry_run=opts.dry_run,
+        mirror_path=opts.mirror_path,
+        path_strip=opts.path_strip,
     )
     print_done(stats)
     sys.exit(stats.exit_code())
@@ -175,7 +145,7 @@ def _cmd_download_library(client: EmbyClient, args: argparse.Namespace) -> None:
             sys.exit(1)
         lib = matches[0]
 
-    stats = download_library_items(
+    stats = download_library(
         client,
         lib,
         opts.output,
@@ -184,6 +154,8 @@ def _cmd_download_library(client: EmbyClient, args: argparse.Namespace) -> None:
         throttle=opts.throttle,
         show_section=True,
         dry_run=opts.dry_run,
+        mirror_path=opts.mirror_path,
+        path_strip=opts.path_strip,
     )
     print_done(stats)
     sys.exit(stats.exit_code())
@@ -239,6 +211,8 @@ def _cmd_download_from_file(client: EmbyClient, args: argparse.Namespace) -> Non
                 force=args.force,
                 throttle=opts.throttle,
                 dry_run=opts.dry_run,
+                mirror_path=opts.mirror_path,
+                path_strip=opts.path_strip,
             )
             elapsed = time.monotonic() - line_t0
             status_map = {
@@ -281,6 +255,8 @@ def _cmd_download_from_file(client: EmbyClient, args: argparse.Namespace) -> Non
                 force=args.force,
                 throttle=opts.throttle,
                 dry_run=opts.dry_run,
+                mirror_path=opts.mirror_path,
+                path_strip=opts.path_strip,
             )
             if result == "ok":
                 line_ok += 1

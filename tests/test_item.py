@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
 from emby_cli.cli import build_parser
 from emby_cli.client import EmbyClient
 from emby_cli.commands.item import cmd_item
+from emby_cli.output import Stats
 
 
 def _client() -> EmbyClient:
@@ -98,6 +101,20 @@ def test_item_play_csv_ids_launches_each():
     ):
         cmd_item(client, _args("play", "--id", "1,2"))
     play_ids.assert_called_once()
+
+
+def test_item_download_delegates_to_item_ops():
+    client = _client()
+    item = {"Id": "100", "Name": "The Matrix", "Type": "Movie", "ProductionYear": 1999}
+    with (
+        patch("emby_cli.commands.item.resolve_item", return_value=item),
+        patch("emby_cli.commands.item.download_items", return_value=Stats(ok=1)) as download_items,
+        patch("emby_cli.commands.item.print_done"),
+    ):
+        with pytest.raises(SystemExit) as exc:
+            cmd_item(client, _args("download", "Matrix", "--dry-run"))
+    assert exc.value.code == 0
+    download_items.assert_called_once()
 
 
 def test_item_search_filters_by_type(capsys):

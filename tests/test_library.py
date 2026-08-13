@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
 from emby_cli.cli import build_parser
 from emby_cli.client import EmbyClient
 from emby_cli.commands.library import cmd_library
+from emby_cli.output import Stats
 
 
 def _client() -> EmbyClient:
@@ -84,6 +87,20 @@ def test_library_show_parent_id_before_subcommand():
     ):
         cmd_library(client, _args("--id", "100", "show"))
     print_library.assert_called_once_with(client, library)
+
+
+def test_library_download_delegates_to_library_ops():
+    client = _client()
+    library = {"Id": "100", "Name": "Movies", "CollectionType": "movies"}
+    with (
+        patch("emby_cli.commands.library.resolve_library", return_value=library),
+        patch("emby_cli.commands.library.download_library", return_value=Stats(ok=2)) as download,
+        patch("emby_cli.commands.library.print_done"),
+    ):
+        with pytest.raises(SystemExit) as exc:
+            cmd_library(client, _args("download", "Movies", "--dry-run"))
+    assert exc.value.code == 0
+    download.assert_called_once()
 
 
 def test_library_search_filters_by_type(capsys):

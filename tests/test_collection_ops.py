@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,6 +11,8 @@ import requests
 from emby_cli.client import EmbyClient
 from emby_cli.collection_ops import (
     CollectionResolutionError,
+    collection_downloadable_items,
+    download_collection,
     find_collection,
     match_collections,
     parse_item_refs,
@@ -17,6 +20,7 @@ from emby_cli.collection_ops import (
     resolve_collection,
     resolve_collection_members,
 )
+from emby_cli.output import Stats
 
 COLLECTIONS = [
     {"Id": "1234", "Name": "Star Wars", "Type": "BoxSet"},
@@ -136,3 +140,40 @@ def test_resolve_members_reports_missing_and_continues():
         result = resolve_collection_members(client, ["missing", "2"])
     assert result.items == [movie]
     assert result.errors == ["item 'missing' not found"]
+
+
+def test_collection_downloadable_items_filters_types():
+    client = _client()
+    collection = {"Id": "10", "Name": "Saga", "Type": "BoxSet"}
+    members = [
+        {"Id": "1", "Name": "Movie", "Type": "Movie"},
+        {"Id": "2", "Name": "Song", "Type": "Audio"},
+        {"Id": "3", "Name": "Folder", "Type": "Folder"},
+    ]
+    with patch.object(client.items, "list_all", return_value=members) as list_all:
+        targets = collection_downloadable_items(client, collection)
+    assert [item["Id"] for item in targets] == ["1", "2"]
+    list_all.assert_called_once_with(parent_id="10", use_cache=False)
+
+
+def test_download_collection_uses_named_output_subdir():
+    client = _client()
+    collection = {"Id": "10", "Name": "Star Wars", "Type": "BoxSet"}
+    items = [{"Id": "1", "Name": "Film", "Type": "Movie", "Path": "/media/Film.mkv"}]
+    with (
+        patch(
+            "emby_cli.collection_ops.collection_downloadable_items",
+            return_value=items,
+        ),
+        patch("emby_cli.collection_ops.download_items", return_value=Stats(ok=1)) as download_items,
+    ):
+        download_collection(
+            client,
+            collection,
+            Path("/out"),
+            method="download",
+            force=False,
+            throttle=0,
+            show_section=False,
+        )
+    assert download_items.call_args.args[2] == Path("/out/Star Wars")

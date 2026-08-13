@@ -425,6 +425,19 @@ def test_collection_list_parses_order_by():
     assert args.no_cache is True
 
 
+def test_collection_download_parses_output_and_dry_run():
+    args = build_parser().parse_args([
+        "collection", "download", "Star Wars", "--output", "/tmp/out",
+        "--method", "hls", "--force", "--dry-run",
+    ])
+    assert args.collection_command == "download"
+    assert args.query == "Star Wars"
+    assert args.output == "/tmp/out"
+    assert args.method == "hls"
+    assert args.force is True
+    assert args.dry_run is True
+
+
 def test_library_show_query_and_id_forms():
     parser = build_parser()
     by_query = parser.parse_args(["library", "show", "Movies"])
@@ -501,3 +514,44 @@ def test_item_play_parses_id_and_parent_id():
     by_parent = parser.parse_args(["item", "--id", "100", "play"])
     assert by_sub.id == "100"
     assert by_parent.item_id == "100"
+
+
+def test_item_download_parses_output_method_and_dry_run():
+    args = build_parser().parse_args([
+        "item", "download", "Matrix", "--output", "/tmp/out", "--method", "stream",
+        "--force", "--dry-run",
+    ])
+    assert args.item_command == "download"
+    assert args.query == "Matrix"
+    assert args.output == "/tmp/out"
+    assert args.method == "stream"
+    assert args.force is True
+    assert args.dry_run is True
+
+
+def test_library_download_parses_id_and_output():
+    args = build_parser().parse_args([
+        "library", "download", "--id", "abc", "--output", "/data",
+    ])
+    assert args.library_command == "download"
+    assert args.id == "abc"
+    assert args.output == "/data"
+
+
+def test_download_mirror_path_flag():
+    args = build_parser().parse_args([
+        "item", "download", "Matrix", "--mirror-path",
+    ])
+    assert args.mirror_path is True
+
+    legacy = build_parser().parse_args([
+        "download", "--item", "--id", "1", "--mirror-path",
+    ])
+    assert legacy.mirror_path is True
+
+
+def test_download_path_strip_parses_from_cli():
+    args = build_parser().parse_args([
+        "library", "download", "Movies", "--mirror-path", "--path-strip", "/mnt/media",
+    ])
+    assert args.path_strip == "/mnt/media"

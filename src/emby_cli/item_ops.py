@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import shlex
 import shutil
@@ -14,8 +15,18 @@ import requests
 
 from emby_cli.client import EmbyClient
 from emby_cli.constants import SEARCH_ITEM_TYPES, SHOW_ITEM_FIELDS
-from emby_cli.output import print_error
-from emby_cli.resolve import classify_resolution, item_video_width
+from emby_cli.output import Stats, print_download, print_error, print_skip
+from emby_cli.resolve import classify_resolution, item_label, item_video_width
+from emby_cli.util import (
+    build_dest_path,
+    format_duration,
+    format_size,
+    item_duration_seconds,
+    item_playback_rate,
+    item_remote_size,
+    should_skip,
+    should_skip_hls,
+)
 
 ITEM_TYPE_ALIASES: dict[str, str] = {
     "movie": "Movie",
@@ -176,6 +187,200 @@ def resolve_item(
         f"item {selector} is ambiguous; use --id",
         matches,
     )
+
+
+@dataclass(frozen=True)
+class DownloadOpts:
+    """Download settings shared by item and library download commands."""
+
+    output: Path
+    throttle: float
+    method: str
+    dry_run: bool
+    mirror_path: bool
+    path_strip: str | None
+
+    @classmethod
+    def from_args(cls, args: argparse.Namespace) -> DownloadOpts:
+        raw_strip = getattr(args, "path_strip", None)
+        return cls(
+            output=Path(args.output),
+            throttle=float(getattr(args, "throttle", 0) or 0),
+            method=getattr(args, "method", "download"),
+            dry_run=bool(getattr(args, "dry_run", False)),
+            mirror_path=bool(getattr(args, "mirror_path", False)),
+            path_strip=(raw_strip.strip() or None) if isinstance(raw_strip, str) else None,
+        )
+
+
+def resolve_rate(item: dict, throttle: float) -> float | None:
+    if not throttle:
+        return None
+    rate = item_playback_rate(item)
+    if rate:
+        rate *= throttle
+        duration = item_duration_seconds(item)
+        effective = format_duration(duration / throttle if duration else None)
+        print(f"  Throttle: {format_size(rate)}/s x{throttle:.2g} (ETA: {effective})")
+    return rate
+
+
+def do_download(
+    client: EmbyClient,
+    item_id: str,
+    item: dict,
+    dest: Path,
+    method: str,
+    throttle: float,
+) -> None:
+    """Dispatch a single item download to the right method."""
+    expected = item_remote_size(item)
+    if method == "hls":
+        client.download_item_hls(item_id, dest, throttle=throttle)
+        return
+    rate = resolve_rate(item, throttle)
+    if method == "stream":
+        client.download_item_stream(
+            item_id, dest, rate_bps=rate, expected_size=expected
+        )
+    else:
+        client.download_item(item_id, dest, rate_bps=rate, expected_size=expected)
+
+
+def should_skip_item(item: dict, dest: Path, method: str, force: bool) -> bool:
+    if force:
+        return False
+    if method == "hls":
+        return should_skip_hls(dest)
+    return should_skip(item, dest)
+
+
+def download_one_item(
+    client: EmbyClient,
+    item: dict,
+    output: Path,
+    *,
+    method: str,
+    force: bool,
+    throttle: float,
+    idx: int | None = None,
+    total: int | None = None,
+    dry_run: bool = False,
+    mirror_path: bool = False,
+    path_strip: str | None = None,
+) -> str:
+    """Download one item. Returns 'ok' | 'skip' | 'error' | 'dry_run'."""
+    item_id = item["Id"]
+    label = item_label(item)
+    dest = build_dest_path(item, output, mirror_path=mirror_path, path_strip=path_strip)
+
+    if dry_run:
+        print(f"{f'[{idx}/{total}] ' if idx and total else ''}dry-run: {label} -> {dest}")
+        return "dry_run"
+
+    if should_skip_item(item, dest, method, force):
+        print_skip(label, dest, idx=idx, total=total)
+        return "skip"
+
+    print_download(label, dest, method=method, idx=idx, total=total)
+    try:
+        do_download(client, item_id, item, dest, method, throttle)
+        return "ok"
+    except (requests.RequestException, RuntimeError, OSError) as exc:
+        print_error(str(exc), idx=idx, total=total)
+        return "error"
+
+
+def download_items(
+    client: EmbyClient,
+    items: list[dict],
+    output: Path,
+    *,
+    method: str,
+    force: bool,
+    throttle: float,
+    dry_run: bool = False,
+    show_single_progress: bool = False,
+    mirror_path: bool = False,
+    path_strip: str | None = None,
+) -> Stats:
+    """Download *items* and accumulate their results."""
+    stats = Stats()
+    total = len(items)
+    show_progress = total > 1 or show_single_progress
+    for idx, item in enumerate(items, 1):
+        result = download_one_item(
+            client,
+            item,
+            output,
+            method=method,
+            force=force,
+            throttle=throttle,
+            idx=idx if show_progress else None,
+            total=total if show_progress else None,
+            dry_run=dry_run,
+            mirror_path=mirror_path,
+            path_strip=path_strip,
+        )
+        if result in ("ok", "dry_run"):
+            stats.ok += 1
+        elif result == "skip":
+            stats.skip += 1
+        elif result == "error":
+            stats.error += 1
+    return stats
+
+
+def download_item_ids(
+    client: EmbyClient,
+    item_id: str,
+    output: Path,
+    *,
+    method: str,
+    force: bool,
+    throttle: float,
+    dry_run: bool = False,
+    raw_type: str | None = None,
+    mirror_path: bool = False,
+    path_strip: str | None = None,
+) -> Stats:
+    """Download comma-separated item IDs."""
+    item_ids = [part.strip() for part in item_id.split(",") if part.strip()]
+    items: list[dict] = []
+    stats = Stats()
+    total = len(item_ids)
+    for idx, iid in enumerate(item_ids, 1):
+        try:
+            item = client.get_item_info(iid)
+        except (requests.RequestException, RuntimeError) as exc:
+            print_error(f"fetching item {iid}: {exc}", idx=idx, total=total)
+            stats.error += 1
+            continue
+        if not item_matches_type(item, raw_type):
+            print_error(
+                f"item id '{iid}' not found",
+                idx=idx if total > 1 else None,
+                total=total if total > 1 else None,
+            )
+            stats.error += 1
+            continue
+        items.append(item)
+    if items:
+        got = download_items(
+            client,
+            items,
+            output,
+            method=method,
+            force=force,
+            throttle=throttle,
+            dry_run=dry_run,
+            mirror_path=mirror_path,
+            path_strip=path_strip,
+        )
+        stats.ok += got.ok
+        stats.skip += got.skip
+        stats.error += got.error
+    return stats
 
 
 _MAC_PLAYER_BINS = (

@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import requests
 
-from emby_cli.download_ops import (
+from emby_cli.item_ops import (
     do_download,
     download_items,
     download_one_item,
@@ -27,8 +27,7 @@ def _item(iid: str = "1", size: int = 100, name: str = "Movie") -> dict:
 
 def test_should_skip_when_size_matches(tmp_path):
     item = _item(size=10)
-    dest = tmp_path / "Movies" / "Movie" / "Movie.mkv"
-    dest.parent.mkdir(parents=True)
+    dest = tmp_path / "Movie.mkv"
     dest.write_bytes(b"x" * 10)
     assert should_skip_item(item, dest, "download", force=False) is True
 
@@ -84,10 +83,7 @@ def test_download_one_dry_run_does_not_call_client(tmp_path, capsys):
 def test_download_one_skip(tmp_path, capsys):
     client = MagicMock()
     item = _item(size=5)
-    # Mirror build_dest_path heuristic for /media/Movies/Movie/Movie.mkv
-    dest = tmp_path / "Movies" / "Movie" / "Movie.mkv"
-    dest.parent.mkdir(parents=True)
-    dest.write_bytes(b"12345")
+    (tmp_path / "Movie.mkv").write_bytes(b"12345")
     result = download_one_item(
         client, item, tmp_path, method="download", force=False, throttle=0
     )

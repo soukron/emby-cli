@@ -13,12 +13,14 @@ from emby_cli.collection_ops import (
     CollectionResolutionError,
     collection_rows,
     collection_selector_id,
+    download_collection,
     parse_item_refs,
     parse_set_assignments,
     resolve_collection,
     resolve_collection_members,
 )
 from emby_cli.constants import SEARCH_COUNT_DEFAULT
+from emby_cli.item_ops import DownloadOpts
 from emby_cli.output import Stats, print_done, print_error
 from emby_cli.resolve import sort_for_display
 
@@ -83,7 +85,7 @@ def validate_collection_args(args: argparse.Namespace) -> str | None:
             parse_set_assignments(assignments)
         except ValueError as exc:
             return str(exc)
-    elif command in {"show", "delete", "rename", "add-item", "remove-item"}:
+    elif command in {"show", "delete", "rename", "add-item", "remove-item", "download"}:
         query = _text(args, "query")
         collection_id = collection_selector_id(args)
         if bool(query) == bool(collection_id):
@@ -305,6 +307,28 @@ def _cmd_show(client: EmbyClient, args: argparse.Namespace) -> None:
     _print_members(members)
 
 
+def _cmd_download(client: EmbyClient, args: argparse.Namespace) -> None:
+    opts = DownloadOpts.from_args(args)
+    if opts.dry_run:
+        print("*** DRY RUN — no files will be downloaded ***\n")
+
+    collection = _resolve_from_args(client, args, use_cache=False)
+    stats = download_collection(
+        client,
+        collection,
+        opts.output,
+        method=opts.method,
+        force=args.force,
+        throttle=opts.throttle,
+        show_section=True,
+        dry_run=opts.dry_run,
+        mirror_path=opts.mirror_path,
+        path_strip=opts.path_strip,
+    )
+    print_done(stats)
+    raise SystemExit(stats.exit_code())
+
+
 def _cmd_create(client: EmbyClient, args: argparse.Namespace) -> None:
     item_ids: list[str] = []
     errors = 0
@@ -415,6 +439,7 @@ def cmd_collection(client: EmbyClient, args: argparse.Namespace) -> None:
         "search": _cmd_search,
         "list": _cmd_list,
         "show": _cmd_show,
+        "download": _cmd_download,
         "create": _cmd_create,
         "delete": _cmd_delete,
         "rename": _cmd_rename,

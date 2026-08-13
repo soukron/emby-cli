@@ -1,9 +1,15 @@
-"""Resolution helpers for Emby library views."""
+"""Resolution and download helpers for Emby library views."""
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from emby_cli.client import EmbyClient
+from emby_cli.constants import DOWNLOADABLE_TYPES
 from emby_cli.download_ops import find_library, match_libraries
+from emby_cli.item_ops import download_items
+from emby_cli.output import Stats, print_section
+from emby_cli.util import safe_output_dir_name
 
 LIBRARY_TYPE_ALIASES: dict[str, str] = {
     "movies": "movies",
@@ -89,4 +95,45 @@ def resolve_library(
     raise LibraryResolutionError(
         f"library {selector} is ambiguous; use --id",
         matches,
+    )
+
+
+def library_downloadable_items(client: EmbyClient, library: dict) -> list[dict]:
+    """Return downloadable media items belonging to one library view."""
+    items = client.get_all_items(parent_id=library["Id"])
+    return [item for item in items if item.get("Type") in DOWNLOADABLE_TYPES]
+
+
+def download_library(
+    client: EmbyClient,
+    library: dict,
+    output: Path,
+    *,
+    method: str,
+    force: bool,
+    throttle: float,
+    show_section: bool = True,
+    dry_run: bool = False,
+    mirror_path: bool = False,
+    path_strip: str | None = None,
+) -> Stats:
+    """Download every downloadable item in *library* via ``item_ops``."""
+    if show_section:
+        print_section(f"Library: {library['Name']}")
+
+    targets = library_downloadable_items(client, library)
+    print(f"Found {len(targets)} items in '{library['Name']}'")
+
+    dest_dir = output / safe_output_dir_name(library["Name"])
+    return download_items(
+        client,
+        targets,
+        dest_dir,
+        method=method,
+        force=force,
+        throttle=throttle,
+        dry_run=dry_run,
+        show_single_progress=True,
+        mirror_path=mirror_path,
+        path_strip=path_strip,
     )

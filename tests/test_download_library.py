@@ -34,9 +34,8 @@ def test_download_library_substring_unique(capsys):
         {"Id": "a", "Name": "PELICULAS", "CollectionType": "movies"},
         {"Id": "b", "Name": "Series", "CollectionType": "tvshows"},
     ]
-    with patch.object(
-        download_mod,
-        "download_library_items",
+    with patch(
+        "emby_cli.commands.download.download_library",
         return_value=Stats(),
     ) as mock_dl:
         with pytest.raises(SystemExit) as exc:
