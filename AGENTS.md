@@ -248,7 +248,7 @@ on `client.items`; add `api/people.py` only if person lookup/creation needs
 - **Username/password**: single store `{EMBY_CACHE_DIR}/auth.json` with `contexts[]` + `current_context` (kubeconfig-style). **Password is never stored.** Legacy `*.cache` files migrate automatically.
 - `login` — authenticate, upsert context, activate it.
 - `logout` — `POST /Sessions/Logout` when possible, then remove context.
-- `config` — `current-server`, `get-servers`, `use-server`, `view` (tokens redacted).
+- `config` — `current-server`, `get-servers`, `use-server`, `rename-server`, `view` (tokens redacted). Each context may have an optional `alias` (friendly name); `current_context` still stores the canonical `user@url` name.
 - Other commands: no `--server` → active context; cache hit → reuse token; miss + credentials → transparent login; **HTTP 401** with password available → invalidate cache and re-authenticate **once per top-level request** (no infinite reauth loop).
 - If 401 cannot be recovered (no password, or re-login rejected): raise `AuthenticationError`, clear the stale cache entry, and let `main` print a short stderr message (no traceback).
 - Invalid selectors for `item` / `library` / `collection` are rejected **before** opening a client.

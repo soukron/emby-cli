@@ -9,15 +9,18 @@ from emby_cli.auth_cache import (
     AuthCacheEntry,
     auth_store_path,
     clear_auth_cache,
+    display_name,
     get_active_entry,
     list_auth_cache_entries,
     list_contexts,
     load_auth_cache,
     load_store,
+    rename_context_alias,
     save_auth_cache,
     set_current_context,
     unique_cached_server_urls,
     upsert_context,
+    validate_alias,
 )
 
 
@@ -77,6 +80,46 @@ def test_set_current_context_by_unique_server(tmp_path, monkeypatch):
     )
     set_current_context("http://a:8096")
     assert get_active_entry().username == "alice"
+
+
+def test_rename_context_alias_and_use_by_alias(tmp_path, monkeypatch):
+    monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
+    save_auth_cache(
+        AuthCacheEntry.create("http://a:8096", "alice", "tok-a", "uid-a")
+    )
+    save_auth_cache(
+        AuthCacheEntry.create("http://b:8096", "bob", "tok-b", "uid-b")
+    )
+    entry = rename_context_alias("alice@http://a:8096", "home")
+    assert display_name(entry) == "home"
+    assert entry.name == "alice@http://a:8096"
+
+    set_current_context("home")
+    assert get_active_entry().name == "alice@http://a:8096"
+
+    store = load_store()
+    assert store.contexts[0].alias == "home" or store.contexts[1].alias == "home"
+
+
+def test_upsert_preserves_alias(tmp_path, monkeypatch):
+    monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
+    save_auth_cache(
+        AuthCacheEntry.create("http://a:8096", "alice", "tok-a", "uid-a")
+    )
+    rename_context_alias("alice@http://a:8096", "home")
+    upsert_context(
+        AuthCacheEntry.create("http://a:8096", "alice", "tok-new", "uid-a"),
+        activate=True,
+    )
+    ctx = next(c for c in list_contexts() if c.username == "alice")
+    assert ctx.alias == "home"
+    assert ctx.access_token == "tok-new"
+
+
+def test_validate_alias_rejects_whitespace_and_at(tmp_path, monkeypatch):
+    monkeypatch.setenv("EMBY_CACHE_DIR", str(tmp_path))
+    assert "whitespace" in validate_alias("my home")
+    assert "@" in validate_alias("user@host")
 
 
 def test_load_prefers_active_for_server(tmp_path, monkeypatch):

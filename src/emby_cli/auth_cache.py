@@ -17,11 +17,13 @@ class AuthCacheEntry:
     user_id: str
     saved_at: str
     name: str = ""
+    alias: str = ""
 
     def __post_init__(self) -> None:
         self.server_url = self.server_url.rstrip("/")
         if not self.name:
             self.name = context_name(self.server_url, self.username)
+        self.alias = self.alias.strip()
 
     @classmethod
     def create(
@@ -51,6 +53,32 @@ def context_name(server_url: str, username: str) -> str:
     return f"{username}@{server_url.rstrip('/')}"
 
 
+def display_name(entry: AuthCacheEntry) -> str:
+    """Return the user-facing server label (alias if set, else canonical name)."""
+    return entry.alias or entry.name
+
+
+def validate_alias(alias: str, *, exclude_name: str | None = None) -> str | None:
+    """Return an error message if *alias* is invalid; else ``None``."""
+    text = alias.strip()
+    if not text:
+        return "alias must not be empty"
+    if any(ch.isspace() for ch in text):
+        return "alias must not contain whitespace"
+    if "@" in text:
+        return "alias must not contain '@'"
+    store = load_store()
+    needle = text.casefold()
+    for entry in store.contexts:
+        if exclude_name and entry.name == exclude_name:
+            continue
+        if entry.alias and entry.alias.casefold() == needle:
+            return f"alias '{text}' is already used"
+        if entry.name.casefold() == needle:
+            return f"alias '{text}' conflicts with server name '{entry.name}'"
+    return None
+
+
 def cache_dir() -> Path:
     return Path(os.environ.get("EMBY_CACHE_DIR", Path.home() / ".cache" / "emby-cli"))
 
@@ -72,6 +100,7 @@ def _entry_from_dict(data: dict) -> AuthCacheEntry | None:
             user_id=str(data["user_id"]),
             saved_at=str(data.get("saved_at") or ""),
             name=str(data.get("name") or ""),
+            alias=str(data.get("alias") or ""),
         )
     except (KeyError, TypeError, ValueError):
         return None
@@ -188,13 +217,17 @@ def upsert_context(entry: AuthCacheEntry, *, activate: bool = True) -> None:
     if _auth_cache_disabled():
         return
     store = load_store()
+    canonical = context_name(entry.server_url, entry.username)
+    existing = next((c for c in store.contexts if c.name == canonical), None)
+    preserved_alias = existing.alias if existing else entry.alias
     entry = AuthCacheEntry(
         server_url=entry.server_url,
         username=entry.username,
         access_token=entry.access_token,
         user_id=entry.user_id,
         saved_at=entry.saved_at or datetime.now(timezone.utc).isoformat(),
-        name=entry.name or context_name(entry.server_url, entry.username),
+        name=canonical,
+        alias=preserved_alias,
     )
     store.contexts = [c for c in store.contexts if c.name != entry.name]
     store.contexts.append(entry)
@@ -232,16 +265,25 @@ def remove_context(
     return True
 
 
-def set_current_context(name: str) -> AuthCacheEntry:
-    """Set ``current_context`` by exact name or unique server URL match."""
+def resolve_context(name: str) -> AuthCacheEntry:
+    """Resolve a server selector to exactly one cached context."""
     store = load_store()
     needle = name.strip()
+    if not needle:
+        raise KeyError("context '' not found")
+
     matches = [c for c in store.contexts if c.name == needle]
     if not matches:
-        # Unique match by server_url or username@server fragment.
+        folded = needle.casefold()
+        matches = [
+            c for c in store.contexts
+            if c.alias and c.alias.casefold() == folded
+        ]
+    if not matches:
         by_server = [
             c for c in store.contexts
-            if c.server_url == needle.rstrip("/") or c.name.endswith(f"@{needle.rstrip('/')}")
+            if c.server_url == needle.rstrip("/")
+            or c.name.endswith(f"@{needle.rstrip('/')}")
         ]
         if len(by_server) == 1:
             matches = by_server
@@ -254,8 +296,32 @@ def set_current_context(name: str) -> AuthCacheEntry:
                 matches = by_user_server
     if len(matches) != 1:
         raise KeyError(f"context '{name}' not found")
-    entry = matches[0]
+    return matches[0]
+
+
+def set_current_context(name: str) -> AuthCacheEntry:
+    """Set ``current_context`` by alias, canonical name, or unique server URL."""
+    store = load_store()
+    entry = resolve_context(name)
     store.current_context = entry.name
+    save_store(store)
+    return entry
+
+
+def rename_context_alias(name: str, alias: str) -> AuthCacheEntry:
+    """Assign a friendly *alias* to the context selected by *name*."""
+    if _auth_cache_disabled():
+        raise RuntimeError("auth cache is disabled")
+    store = load_store()
+    entry = resolve_context(name)
+    err = validate_alias(alias, exclude_name=entry.name)
+    if err:
+        raise ValueError(err)
+    for ctx in store.contexts:
+        if ctx.name == entry.name:
+            ctx.alias = alias.strip()
+            entry = ctx
+            break
     save_store(store)
     return entry
 

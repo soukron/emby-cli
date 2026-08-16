@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.7.1
+
+### Added
+
+- `config rename-server NAME --new-name ALIAS` to assign a friendly alias to a
+  saved server. Aliases appear in `config get-servers` and work with
+  `config use-server` and `config current-server`.
+
 ## 0.7.0
 
 ### Added

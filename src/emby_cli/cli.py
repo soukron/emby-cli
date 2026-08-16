@@ -162,7 +162,21 @@ def build_parser() -> argparse.ArgumentParser:
     use_srv.add_argument(
         "server_name",
         metavar="NAME",
+        help="Server alias, entry name (user@url), or unique server URL",
+    )
+    rename_srv = cfg_sub.add_parser(
+        "rename-server",
+        help="Set a friendly alias for a saved server",
+    )
+    rename_srv.add_argument(
+        "server_name",
+        metavar="NAME",
         help="Server entry name (user@url) or unique server URL",
+    )
+    rename_srv.add_argument(
+        "--new-name",
+        required=True,
+        help="Short alias used by get-servers and use-server",
     )
     cfg_sub.add_parser(
         "view",

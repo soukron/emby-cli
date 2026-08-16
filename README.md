@@ -172,6 +172,8 @@ or environment variables.
 emby-cli config get-servers
 emby-cli config current-server
 emby-cli config use-server 'you@http://emby:8096'
+emby-cli config rename-server 'you@http://emby:8096' --new-name synology
+emby-cli config use-server synology   # alias from rename-server
 emby-cli config view          # tokens are redacted
 emby-cli logout               # revoke and forget the current session
 ```
