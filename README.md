@@ -85,6 +85,7 @@ Preview a large operation first, then choose a destination:
 ```bash
 emby-cli item download "breaking bad S01E01" --dry-run
 emby-cli item download --id 123456 --output ./downloads
+emby-cli item download --id 123456 --pick-best-item   # series: one file per SxxExx
 emby-cli item download --from-file titles.txt --dry-run
 emby-cli library download "peliculas 4k" --output ./downloads
 ```

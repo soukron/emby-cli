@@ -352,8 +352,10 @@ Read-only entity commands (`item list`, `item search`, `item show`, `item play`)
   Supports `--player`, `--wait`, `--pick-best-item`, `--no-cache`, `--no-parse-query`,
   and comma-separated `--id`. Parent `--id` may appear before the subcommand.
   QUERY defaults to title-line resolution (`resolve_title_items`).
-- `item download` resolves one item by QUERY or `--id` (CSV supported) and downloads
-  via `item_ops` (`download_items`, `download_item_ids`, `download_from_file`).
+- `item download` resolves one item by QUERY or `--id` (CSV supported). A
+  `--id` that refers to a `Series` downloads all episodes in season/episode
+  order. Downloads via `item_ops` (`download_items`, `download_item_ids`,
+  `download_from_file`).
   Supports `--output`, `--method`, `--force`, `--throttle`, `--pick-best-item`,
   `--dry-run`, `--from-file`, `--no-parse-query`, and optional `--mirror-path`.
   QUERY / `--from-file` default to title-line resolution (`resolve_title_items`).

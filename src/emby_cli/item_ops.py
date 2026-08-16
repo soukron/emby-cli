@@ -18,9 +18,10 @@ import requests
 
 from emby_cli.client import EmbyClient
 from emby_cli.constants import SEARCH_ITEM_TYPES, SHOW_ITEM_FIELDS
-from emby_cli.media_sort import sort_media_items
+from emby_cli.media_sort import sort_key_id, sort_media_items
 from emby_cli.output import Stats, print_done, print_download, print_error, print_skip
 from emby_cli.resolve import (
+    _pick_episode_versions,
     classify_resolution,
     item_label,
     item_video_width,
@@ -454,6 +455,59 @@ class DownloadOpts:
         )
 
 
+def sort_episodes(episodes: list[dict]) -> list[dict]:
+    """Sort episodes by season, episode number, then Emby Id."""
+
+    def key(ep: dict) -> tuple:
+        season = ep.get("ParentIndexNumber")
+        number = ep.get("IndexNumber")
+        if season is not None and number is not None:
+            return (0, int(season), int(number), sort_key_id(ep))
+        if season is not None:
+            return (1, int(season), 0, sort_key_id(ep))
+        if number is not None:
+            return (2, 0, int(number), sort_key_id(ep))
+        return (3, 0, 0, sort_key_id(ep))
+
+    return sorted(episodes, key=key)
+
+
+def expand_item_for_download(
+    client: EmbyClient,
+    item: dict,
+    *,
+    pick_best: bool = False,
+) -> list[dict] | None:
+    """Return download targets for *item* (one row, or all episodes for Series)."""
+    if item.get("Type") != "Series":
+        return [item]
+
+    name = item.get("Name") or item.get("Id")
+    try:
+        episodes = client.get_show_episodes(item["Id"], season=None)
+    except (requests.RequestException, RuntimeError) as exc:
+        print_error(f"listing episodes for series '{name}': {exc}")
+        return None
+
+    if not episodes:
+        print(f"Series '{name}': no episodes found.")
+        return []
+
+    series_name = item.get("Name")
+    enriched: list[dict] = []
+    for ep in episodes:
+        row = dict(ep)
+        if series_name and not row.get("SeriesName"):
+            row["SeriesName"] = series_name
+        enriched.append(row)
+
+    picked = _pick_episode_versions(sort_episodes(enriched), pick_best=pick_best)
+    if picked is None:
+        return None
+    print(f"Series '{name}': {len(picked)} episode(s)")
+    return picked
+
+
 def resolve_rate(item: dict, throttle: float) -> float | None:
     if not throttle:
         return None
@@ -584,6 +638,7 @@ def download_item_ids(
     raw_type: str | None = None,
     mirror_path: bool = False,
     path_strip: str | None = None,
+    pick_best: bool = False,
 ) -> Stats:
     """Download comma-separated item IDs."""
     item_ids = [part.strip() for part in item_id.split(",") if part.strip()]
@@ -605,7 +660,14 @@ def download_item_ids(
             )
             stats.error += 1
             continue
-        items.append(item)
+        targets = expand_item_for_download(client, item, pick_best=pick_best)
+        if targets is None:
+            stats.error += 1
+            continue
+        if not targets and item.get("Type") == "Series":
+            stats.error += 1
+            continue
+        items.extend(targets)
     if items:
         got = download_items(
             client,
@@ -673,9 +735,21 @@ def download_from_file(
                 totals.error += 1
                 continue
 
-            result = download_one_item(
+            targets = expand_item_for_download(client, item, pick_best=pick_best)
+            if targets is None:
+                elapsed = time.monotonic() - line_t0
+                line_stats.append((label, "ERROR", elapsed, "ambiguous episode versions"))
+                totals.error += 1
+                continue
+            if not targets:
+                elapsed = time.monotonic() - line_t0
+                line_stats.append((label, "ERROR", elapsed, "no episodes"))
+                totals.error += 1
+                continue
+
+            got = download_items(
                 client,
-                item,
+                targets,
                 output,
                 method=method,
                 force=force,
@@ -685,20 +759,20 @@ def download_from_file(
                 path_strip=path_strip,
             )
             elapsed = time.monotonic() - line_t0
-            status_map = {
-                "ok": "OK",
-                "skip": "SKIPPED",
-                "error": "ERROR",
-                "dry_run": "DRY RUN",
-            }
-            status = status_map.get(result, "ERROR")
+            if got.error:
+                status = "ERROR"
+            elif dry_run and got.ok:
+                status = "DRY RUN"
+            elif got.skip and not got.ok:
+                status = "SKIPPED"
+            elif got.skip:
+                status = "PARTIAL"
+            else:
+                status = "OK"
             line_stats.append((label, status, elapsed, item.get("Name", "")))
-            if result == "ok":
-                totals.ok += 1
-            elif result == "skip":
-                totals.skip += 1
-            elif result == "error":
-                totals.error += 1
+            totals.ok += got.ok
+            totals.skip += got.skip
+            totals.error += got.error
             continue
 
         label = raw_line

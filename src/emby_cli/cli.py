@@ -540,7 +540,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     it_download = it_sub.add_parser("download", help="Download media items")
     it_download.add_argument("query", nargs="?", metavar="QUERY")
-    it_download.add_argument("--id", help="Media item ID to download (comma-separated for multiple)")
+    it_download.add_argument(
+        "--id",
+        help="Media item ID (comma-separated). Series IDs download all episodes",
+    )
     it_download.add_argument(
         "--type",
         dest="item_type",

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.7.2
+
+### Added
+
+- `item download --id` expands a `Series` ID into all episodes (sorted by
+  season/episode, then Id) and downloads them sequentially. Duplicate
+  SxxExx versions follow the same rules as title-line downloads
+  (`--pick-best-item` or fail with a disambiguation table).
+
 ## 0.7.1
 
 ### Added

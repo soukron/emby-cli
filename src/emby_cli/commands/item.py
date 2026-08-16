@@ -248,6 +248,7 @@ def _cmd_download(client: EmbyClient, args: argparse.Namespace) -> None:
             raw_type=_text(args, "item_type"),
             mirror_path=opts.mirror_path,
             path_strip=opts.path_strip,
+            pick_best=pick_best,
         )
         print_done(stats)
         raise SystemExit(stats.exit_code())

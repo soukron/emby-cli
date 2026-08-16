@@ -14,8 +14,10 @@ from emby_cli.item_ops import (
     ItemListingQuery,
     ItemResolutionError,
     build_item_listing_query,
+    download_item_ids,
     emby_search_term_for_strict_query,
     episodes_for_title_line,
+    expand_item_for_download,
     fetch_item_listing,
     item_types_for_api,
     matches_strict_name_query,
@@ -24,8 +26,10 @@ from emby_cli.item_ops import (
     play_url,
     playable_items_for_parent,
     resolve_item,
+    sort_episodes,
     split_listing_search_query,
 )
+from emby_cli.output import Stats
 
 ITEMS = [
     {"Id": "100", "Name": "The Matrix", "Type": "Movie", "ProductionYear": 1999},
@@ -339,3 +343,60 @@ def test_resolve_item_by_id_prefix_uses_catalog():
         assert resolve_item(client, item_id="20", use_cache=False) == ITEMS[1]
     get.assert_called_once_with("20", fields=SHOW_ITEM_FIELDS, use_cache=False)
     search.assert_called_once_with("", item_types="Movie,Episode,Audio,Video", use_cache=False)
+
+
+def test_sort_episodes_orders_by_season_and_number():
+    episodes = [
+        {"Id": "3", "ParentIndexNumber": 2, "IndexNumber": 1},
+        {"Id": "1", "ParentIndexNumber": 1, "IndexNumber": 2},
+        {"Id": "2", "ParentIndexNumber": 1, "IndexNumber": 1},
+    ]
+    ordered = sort_episodes(episodes)
+    assert [ep["Id"] for ep in ordered] == ["2", "1", "3"]
+
+
+def test_expand_item_for_download_series(capsys):
+    client = MagicMock()
+    series = {"Id": "s1", "Name": "Show", "Type": "Series"}
+    client.get_show_episodes.return_value = [
+        {"Id": "e2", "Type": "Episode", "ParentIndexNumber": 1, "IndexNumber": 2, "Name": "B"},
+        {"Id": "e1", "Type": "Episode", "ParentIndexNumber": 1, "IndexNumber": 1, "Name": "A"},
+    ]
+    targets = expand_item_for_download(client, series)
+    assert targets is not None
+    assert [ep["Id"] for ep in targets] == ["e1", "e2"]
+    assert targets[0]["SeriesName"] == "Show"
+    assert "2 episode(s)" in capsys.readouterr().out
+    client.get_show_episodes.assert_called_once_with("s1", season=None)
+
+
+def test_expand_item_for_download_movie_passthrough():
+    client = MagicMock()
+    movie = {"Id": "m1", "Name": "Film", "Type": "Movie"}
+    assert expand_item_for_download(client, movie) == [movie]
+    client.get_show_episodes.assert_not_called()
+
+
+def test_download_item_ids_expands_series(tmp_path, capsys):
+    client = MagicMock()
+    series = {"Id": "s1", "Name": "Show", "Type": "Series"}
+    episodes = [
+        {"Id": "e1", "Type": "Episode", "ParentIndexNumber": 1, "IndexNumber": 1, "Name": "A"},
+    ]
+    client.get_item_info.return_value = series
+    client.get_show_episodes.return_value = episodes
+    with patch("emby_cli.item_ops.download_items") as download_items:
+        download_items.return_value = Stats(ok=1)
+        stats = download_item_ids(
+            client,
+            "s1",
+            tmp_path,
+            method="download",
+            force=False,
+            throttle=0,
+            dry_run=True,
+        )
+    assert stats.ok == 1
+    passed_items = download_items.call_args.args[1]
+    assert len(passed_items) == 1
+    assert passed_items[0]["Id"] == "e1"
