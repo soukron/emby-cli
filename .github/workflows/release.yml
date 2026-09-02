@@ -23,7 +23,7 @@ jobs:
     outputs:
       tag: ${{ steps.v.outputs.tag }}
       draft: ${{ steps.v.outputs.draft }}
-      pretend_version: ${{ steps.v.outputs.pretend_version }}
+      pip_version: ${{ steps.v.outputs.pip_version }}
     steps:
       - name: Resolve version
         id: v
