@@ -22,6 +22,8 @@ jobs:
         include:
           - os: macos-latest
             suffix: macos-arm64
+          - os: ubuntu-latest
+            suffix: linux-x64
 
     runs-on: ${{ matrix.os }}
 
