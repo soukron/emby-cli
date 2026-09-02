@@ -14,98 +14,156 @@ on:
 permissions:
   contents: write
 
-jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            suffix: macos-arm64
-          - os: ubuntu-latest
-            suffix: linux-x64
+env:
+  PYTHON_VERSION: "3.12"
 
-    runs-on: ${{ matrix.os }}
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      draft: ${{ steps.v.outputs.draft }}
+      pretend_version: ${{ steps.v.outputs.pretend_version }}
+    steps:
+      - name: Resolve version
+        id: v
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.test_version }}" >> "$GITHUB_OUTPUT"
+            echo "draft=true" >> "$GITHUB_OUTPUT"
+            echo "pretend_version=0.0.0" >> "$GITHUB_OUTPUT"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "draft=false" >> "$GITHUB_OUTPUT"
+            echo "pretend_version=" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-macos:
+    needs: resolve
+    runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install package and PyInstaller
         run: pip install . pyinstaller
         env:
-          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ github.event_name == 'workflow_dispatch' && '0.0.0' || '' }}
+          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ needs.resolve.outputs.pretend_version }}
 
-      - name: Resolve version
-        id: version
+      - name: Build light variant
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.test_version }}" >> "$GITHUB_OUTPUT"
-          else
-            TAG="${GITHUB_REF#refs/tags/}"
-            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Build light variant (no bundled ffmpeg)
-        run: |
-          pyinstaller --onefile \
-            --name emby-cli \
+          pyinstaller --onefile --name emby-cli \
             --hidden-import emby_cli \
             --hidden-import static_ffmpeg \
             --hidden-import static_ffmpeg.run \
             --collect-submodules emby_cli \
             src/emby_cli/__main__.py
-          mv dist/emby-cli dist/emby-cli-${{ steps.version.outputs.tag }}-${{ matrix.suffix }}
+          mv dist/emby-cli dist/emby-cli-${{ needs.resolve.outputs.tag }}-macos-arm64
 
-      - name: Clean PyInstaller state for second build
+      - name: Clean PyInstaller state
         run: rm -rf build/ dist/emby-cli emby-cli.spec
 
-      - name: Pre-fetch ffmpeg for current platform
+      - name: Pre-fetch ffmpeg
         run: python -c "from static_ffmpeg.run import get_or_fetch_platform_executables_else_raise; get_or_fetch_platform_executables_else_raise()"
 
       - name: Locate ffmpeg binaries
         id: ffmpeg
         run: |
-          FFMPEG_DIR=$(python -c "from static_ffmpeg.run import get_platform_dir; print(get_platform_dir())")
-          echo "dir=$FFMPEG_DIR" >> "$GITHUB_OUTPUT"
+          echo "dir=$(python -c 'from static_ffmpeg.run import get_platform_dir; print(get_platform_dir())')" >> "$GITHUB_OUTPUT"
           echo "key=$(python -c 'from static_ffmpeg.run import get_platform_key; print(get_platform_key())')" >> "$GITHUB_OUTPUT"
 
       - name: Build full variant (bundled ffmpeg)
         run: |
-          pyinstaller --onefile \
-            --name emby-cli \
+          pyinstaller --onefile --name emby-cli \
             --hidden-import emby_cli \
             --hidden-import static_ffmpeg \
             --hidden-import static_ffmpeg.run \
             --collect-submodules emby_cli \
             --add-data "${{ steps.ffmpeg.outputs.dir }}:static_ffmpeg/bin/${{ steps.ffmpeg.outputs.key }}" \
             src/emby_cli/__main__.py
-          mv dist/emby-cli dist/emby-cli-${{ steps.version.outputs.tag }}-${{ matrix.suffix }}-full
+          mv dist/emby-cli dist/emby-cli-${{ needs.resolve.outputs.tag }}-macos-arm64-full
 
       - name: Generate checksums
         run: |
           cd dist
-          for f in emby-cli-*; do
-            shasum -a 256 "$f" > "$f.sha256"
-          done
+          for f in emby-cli-*; do shasum -a 256 "$f" > "$f.sha256"; done
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v6
         with:
-          name: binaries-${{ matrix.suffix }}
+          name: binaries-macos-arm64
+          path: dist/emby-cli-*
+          if-no-files-found: error
+          retention-days: 1
+
+  build-linux:
+    needs: resolve
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Build inside Debian 11 container (glibc 2.31)
+        run: |
+          docker run --rm \
+            -v "$PWD:/work" -w /work \
+            -e SETUPTOOLS_SCM_PRETEND_VERSION="${{ needs.resolve.outputs.pretend_version }}" \
+            -e TAG="${{ needs.resolve.outputs.tag }}" \
+            python:${{ env.PYTHON_VERSION }}-slim-bullseye bash -c '
+              set -e
+              pip install --quiet . pyinstaller
+
+              echo "::group::Build light variant"
+              pyinstaller --onefile --name emby-cli \
+                --hidden-import emby_cli \
+                --hidden-import static_ffmpeg \
+                --hidden-import static_ffmpeg.run \
+                --collect-submodules emby_cli \
+                src/emby_cli/__main__.py
+              mv dist/emby-cli "dist/emby-cli-${TAG}-linux-x64"
+              echo "::endgroup::"
+
+              rm -rf build/ dist/emby-cli emby-cli.spec
+
+              echo "::group::Pre-fetch ffmpeg"
+              python -c "from static_ffmpeg.run import get_or_fetch_platform_executables_else_raise; get_or_fetch_platform_executables_else_raise()"
+              FFMPEG_DIR=$(python -c "from static_ffmpeg.run import get_platform_dir; print(get_platform_dir())")
+              FFMPEG_KEY=$(python -c "from static_ffmpeg.run import get_platform_key; print(get_platform_key())")
+              echo "::endgroup::"
+
+              echo "::group::Build full variant"
+              pyinstaller --onefile --name emby-cli \
+                --hidden-import emby_cli \
+                --hidden-import static_ffmpeg \
+                --hidden-import static_ffmpeg.run \
+                --collect-submodules emby_cli \
+                --add-data "${FFMPEG_DIR}:static_ffmpeg/bin/${FFMPEG_KEY}" \
+                src/emby_cli/__main__.py
+              mv dist/emby-cli "dist/emby-cli-${TAG}-linux-x64-full"
+              echo "::endgroup::"
+
+              cd dist
+              for f in emby-cli-*; do sha256sum "$f" > "$f.sha256"; done
+            '
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: binaries-linux-x64
           path: dist/emby-cli-*
           if-no-files-found: error
           retention-days: 1
 
   release:
     name: Create GitHub Release
-    needs: build
+    needs: [resolve, build-macos, build-linux]
     runs-on: ubuntu-latest
 
     steps:
@@ -119,22 +177,11 @@ jobs:
       - name: List assets
         run: ls -lh assets/
 
-      - name: Resolve release tag
-        id: release_tag
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.test_version }}" >> "$GITHUB_OUTPUT"
-            echo "draft=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-            echo "draft=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.release_tag.outputs.tag }}
-          name: ${{ steps.release_tag.outputs.tag }}
-          draft: ${{ steps.release_tag.outputs.draft }}
+          tag_name: ${{ needs.resolve.outputs.tag }}
+          name: ${{ needs.resolve.outputs.tag }}
+          draft: ${{ needs.resolve.outputs.draft }}
           generate_release_notes: true
           files: assets/*
