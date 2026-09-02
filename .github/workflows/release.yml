@@ -163,9 +163,81 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  build-windows:
+    needs: resolve
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install package and PyInstaller
+        run: pip install . pyinstaller
+        env:
+          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ needs.resolve.outputs.pip_version }}
+
+      - name: Build light variant
+        run: |
+          pyinstaller --onefile --name emby-cli `
+            --hidden-import emby_cli `
+            --hidden-import static_ffmpeg `
+            --hidden-import static_ffmpeg.run `
+            --collect-submodules emby_cli `
+            src/emby_cli/__main__.py
+          Move-Item dist/emby-cli.exe "dist/emby-cli-${{ needs.resolve.outputs.tag }}-windows-x64.exe"
+        shell: pwsh
+
+      - name: Clean PyInstaller state
+        run: Remove-Item -Recurse -Force build, emby-cli.spec -ErrorAction SilentlyContinue
+        shell: pwsh
+
+      - name: Pre-fetch ffmpeg
+        run: python -c "from static_ffmpeg.run import get_or_fetch_platform_executables_else_raise; get_or_fetch_platform_executables_else_raise()"
+
+      - name: Locate ffmpeg binaries
+        id: ffmpeg
+        run: |
+          $dir = python -c "from static_ffmpeg.run import get_platform_dir; print(get_platform_dir())"
+          $key = python -c "from static_ffmpeg.run import get_platform_key; print(get_platform_key())"
+          echo "dir=$dir" >> $env:GITHUB_OUTPUT
+          echo "key=$key" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Build full variant (bundled ffmpeg)
+        run: |
+          pyinstaller --onefile --name emby-cli `
+            --hidden-import emby_cli `
+            --hidden-import static_ffmpeg `
+            --hidden-import static_ffmpeg.run `
+            --collect-submodules emby_cli `
+            --add-data "${{ steps.ffmpeg.outputs.dir }};static_ffmpeg/bin/${{ steps.ffmpeg.outputs.key }}" `
+            src/emby_cli/__main__.py
+          Move-Item dist/emby-cli.exe "dist/emby-cli-${{ needs.resolve.outputs.tag }}-windows-x64-full.exe"
+        shell: pwsh
+
+      - name: Generate checksums
+        run: |
+          Get-ChildItem dist/emby-cli-* -Exclude *.sha256 | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($_.Name)" | Out-File -Encoding ASCII "$($_.FullName).sha256"
+          }
+        shell: pwsh
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: binaries-windows-x64
+          path: dist/emby-cli-*
+          if-no-files-found: error
+          retention-days: 1
+
   release:
     name: Create GitHub Release
-    needs: [resolve, build-macos, build-linux]
+    needs: [resolve, build-macos, build-linux, build-windows]
     runs-on: ubuntu-latest
 
     steps:
