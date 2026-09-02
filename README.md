@@ -9,6 +9,10 @@ port 8096): no SSH, shared folders, or rsync.
 
 ```bash
 pip install emby-cli
+
+# Or, install in an isolated environment (recommended)
+pipx install emby-cli    # with pipx
+uv tool install emby-cli # with uv (faster)
 ```
 
 ## Start in 60 seconds
@@ -226,7 +230,9 @@ python -m build && twine check dist/*
 
 Architecture, CLI contracts, testing rules, and the release process are in
 **[AGENTS.md](AGENTS.md)**. Releases are published to PyPI by pushing a
-`vX.Y.Z` tag; this project does not create GitHub Releases.
+`vX.Y.Z` tag. Standalone binaries for macOS, Linux, and Windows are also
+available on the [GitHub Releases](https://github.com/soukron/emby-cli/releases)
+page.
 
 ## Responsible use
 
