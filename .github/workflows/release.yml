@@ -120,6 +120,7 @@ jobs:
             -e TAG="${{ needs.resolve.outputs.tag }}" \
             python:${{ env.PYTHON_VERSION }}-slim-bullseye bash -c '
               set -e
+              apt-get update -qq && apt-get install -y -qq binutils > /dev/null
               pip install --quiet . pyinstaller
 
               echo "::group::Build light variant"
