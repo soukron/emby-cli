@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       test_version:
-        description: "Test version label (e.g. v0.0.0-test.1)"
+        description: "Test version label (e.g. v0.0.0rc1)"
         required: true
-        default: "v0.0.0-test.1"
+        default: "v0.0.0rc1"
 
 permissions:
   contents: write
@@ -22,18 +22,16 @@ jobs:
         include:
           - os: macos-latest
             suffix: macos-arm64
-          - os: macos-13
-            suffix: macos-x64
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -96,7 +94,7 @@ jobs:
           done
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: binaries-${{ matrix.suffix }}
           path: dist/emby-cli-*
@@ -110,7 +108,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: binaries-*
           merge-multiple: true
@@ -131,7 +129,7 @@ jobs:
           fi
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.release_tag.outputs.tag }}
           name: ${{ steps.release_tag.outputs.tag }}
