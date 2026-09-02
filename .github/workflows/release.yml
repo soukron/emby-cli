@@ -36,7 +36,9 @@ jobs:
             TAG="${GITHUB_REF#refs/tags/}"
             echo "tag=$TAG" >> "$GITHUB_OUTPUT"
             echo "draft=false" >> "$GITHUB_OUTPUT"
+            # Empty for native builds (git available); derived for containers
             echo "pretend_version=" >> "$GITHUB_OUTPUT"
+            echo "pretend_version_from_tag=${TAG#v}" >> "$GITHUB_OUTPUT"
           fi
 
   build-macos:
@@ -115,7 +117,7 @@ jobs:
         run: |
           docker run --rm \
             -v "$PWD:/work" -w /work \
-            -e SETUPTOOLS_SCM_PRETEND_VERSION="${{ needs.resolve.outputs.pretend_version }}" \
+            -e SETUPTOOLS_SCM_PRETEND_VERSION="${{ needs.resolve.outputs.pretend_version || needs.resolve.outputs.pretend_version_from_tag }}" \
             -e TAG="${{ needs.resolve.outputs.tag }}" \
             python:${{ env.PYTHON_VERSION }}-slim-bullseye bash -c '
               set -e
