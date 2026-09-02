@@ -1,0 +1,114 @@
+name: Release standalone binaries
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            suffix: macos-arm64
+          - os: macos-13
+            suffix: macos-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package and PyInstaller
+        run: pip install . pyinstaller
+
+      - name: Resolve version from tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build light variant (no bundled ffmpeg)
+        run: |
+          pyinstaller --onefile \
+            --name emby-cli \
+            --hidden-import emby_cli \
+            --hidden-import static_ffmpeg \
+            --hidden-import static_ffmpeg.run \
+            --collect-submodules emby_cli \
+            src/emby_cli/__main__.py
+          mv dist/emby-cli dist/emby-cli-${{ steps.version.outputs.tag }}-${{ matrix.suffix }}
+
+      - name: Clean PyInstaller state for second build
+        run: rm -rf build/ dist/emby-cli emby-cli.spec
+
+      - name: Pre-fetch ffmpeg for current platform
+        run: python -c "from static_ffmpeg.run import get_or_fetch_platform_executables_else_raise; get_or_fetch_platform_executables_else_raise()"
+
+      - name: Locate ffmpeg binaries
+        id: ffmpeg
+        run: |
+          FFMPEG_DIR=$(python -c "from static_ffmpeg.run import get_platform_dir; print(get_platform_dir())")
+          echo "dir=$FFMPEG_DIR" >> "$GITHUB_OUTPUT"
+          echo "key=$(python -c 'from static_ffmpeg.run import get_platform_key; print(get_platform_key())')" >> "$GITHUB_OUTPUT"
+
+      - name: Build full variant (bundled ffmpeg)
+        run: |
+          pyinstaller --onefile \
+            --name emby-cli \
+            --hidden-import emby_cli \
+            --hidden-import static_ffmpeg \
+            --hidden-import static_ffmpeg.run \
+            --collect-submodules emby_cli \
+            --add-data "${{ steps.ffmpeg.outputs.dir }}:static_ffmpeg/bin/${{ steps.ffmpeg.outputs.key }}" \
+            src/emby_cli/__main__.py
+          mv dist/emby-cli dist/emby-cli-${{ steps.version.outputs.tag }}-${{ matrix.suffix }}-full
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          for f in emby-cli-*; do
+            shasum -a 256 "$f" > "$f.sha256"
+          done
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.suffix }}
+          path: dist/emby-cli-*
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: binaries-*
+          merge-multiple: true
+          path: assets
+
+      - name: List assets
+        run: ls -lh assets/
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: assets/*
