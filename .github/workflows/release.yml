@@ -29,16 +29,15 @@ jobs:
         id: v
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.test_version }}" >> "$GITHUB_OUTPUT"
+            TAG="${{ github.event.inputs.test_version }}"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
             echo "draft=true" >> "$GITHUB_OUTPUT"
-            echo "pretend_version=0.0.0" >> "$GITHUB_OUTPUT"
+            echo "pip_version=0.0.0" >> "$GITHUB_OUTPUT"
           else
             TAG="${GITHUB_REF#refs/tags/}"
             echo "tag=$TAG" >> "$GITHUB_OUTPUT"
             echo "draft=false" >> "$GITHUB_OUTPUT"
-            # Empty for native builds (git available); derived for containers
-            echo "pretend_version=" >> "$GITHUB_OUTPUT"
-            echo "pretend_version_from_tag=${TAG#v}" >> "$GITHUB_OUTPUT"
+            echo "pip_version=${TAG#v}" >> "$GITHUB_OUTPUT"
           fi
 
   build-macos:
@@ -57,7 +56,7 @@ jobs:
       - name: Install package and PyInstaller
         run: pip install . pyinstaller
         env:
-          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ needs.resolve.outputs.pretend_version }}
+          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ needs.resolve.outputs.pip_version }}
 
       - name: Build light variant
         run: |
@@ -117,7 +116,7 @@ jobs:
         run: |
           docker run --rm \
             -v "$PWD:/work" -w /work \
-            -e SETUPTOOLS_SCM_PRETEND_VERSION="${{ needs.resolve.outputs.pretend_version || needs.resolve.outputs.pretend_version_from_tag }}" \
+            -e SETUPTOOLS_SCM_PRETEND_VERSION="${{ needs.resolve.outputs.pip_version }}" \
             -e TAG="${{ needs.resolve.outputs.tag }}" \
             python:${{ env.PYTHON_VERSION }}-slim-bullseye bash -c '
               set -e
