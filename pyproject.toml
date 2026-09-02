@@ -34,7 +34,6 @@ dependencies = [
     "requests>=2.31",
     "tqdm>=4.66",
     "m3u8>=4.0",
-    "static-ffmpeg>=3.0",
 ]
 
 [project.urls]

@@ -139,16 +139,17 @@ def should_skip_hls(dest: Path) -> bool:
 
 
 def ffmpeg_exe() -> str:
-    """Return the bundled static-ffmpeg binary (never the system PATH)."""
-    try:
-        from static_ffmpeg.run import get_or_fetch_platform_executables_else_raise
-    except ImportError as exc:
+    """Return the path to ffmpeg from the system PATH."""
+    import shutil
+
+    path = shutil.which("ffmpeg")
+    if path is None:
         raise RuntimeError(
-            "static-ffmpeg is required for HLS remux. "
-            "Install it with: pip install static-ffmpeg"
-        ) from exc
-    ffmpeg_path, _ = get_or_fetch_platform_executables_else_raise()
-    return ffmpeg_path
+            "ffmpeg not found in PATH. "
+            "HLS remux requires ffmpeg; install it via your package manager "
+            "(e.g. brew install ffmpeg, apt install ffmpeg, choco install ffmpeg)."
+        )
+    return path
 
 
 def remux_segments(tmp_dir: Path, segments: list[Path], dest_path: Path) -> None:
